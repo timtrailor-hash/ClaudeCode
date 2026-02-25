@@ -62,6 +62,22 @@ struct SettingsView: View {
                         .tint(accent)
                 }
 
+                Section(header: Text("AI Failure Checks"), footer: Text("Bambu uses Claude Haiku (API credits). SV08 uses Obico (free).")) {
+                    Picker("Bambu A1 (Haiku)", selection: $notifPrefs.bambuAIFrequency) {
+                        ForEach(NotificationPreferences.frequencyOptions, id: \.seconds) { opt in
+                            Text(opt.label).tag(opt.seconds)
+                        }
+                    }
+                    .tint(accent)
+
+                    Picker("SV08 Max (Obico)", selection: $notifPrefs.sv08AIFrequency) {
+                        ForEach(NotificationPreferences.frequencyOptions, id: \.seconds) { opt in
+                            Text(opt.label).tag(opt.seconds)
+                        }
+                    }
+                    .tint(accent)
+                }
+
                 Section("Chat Notifications") {
                     Toggle("Claude Finished (background)", isOn: $notifPrefs.claudeFinished)
                         .tint(accent)

@@ -32,6 +32,28 @@ class NotificationPreferences: ObservableObject {
         didSet { UserDefaults.standard.set(aiFailureDetection, forKey: "notify_aiFailure") }
     }
 
+    // AI check frequencies (seconds, 0 = off)
+    @Published var bambuAIFrequency: Int {
+        didSet {
+            UserDefaults.standard.set(bambuAIFrequency, forKey: "ai_freq_bambu")
+            sendAIConfigToServer()
+        }
+    }
+    @Published var sv08AIFrequency: Int {
+        didSet {
+            UserDefaults.standard.set(sv08AIFrequency, forKey: "ai_freq_sv08")
+            sendAIConfigToServer()
+        }
+    }
+
+    static let frequencyOptions: [(label: String, seconds: Int)] = [
+        ("Off", 0),
+        ("1 min", 60),
+        ("5 min", 300),
+        ("15 min", 900),
+        ("1 hour", 3600)
+    ]
+
     init() {
         let d = UserDefaults.standard
         // Default everything ON except print started
@@ -43,6 +65,26 @@ class NotificationPreferences: ObservableObject {
         customWatches = d.object(forKey: "notify_customWatches") as? Bool ?? true
         claudeFinished = d.object(forKey: "notify_claudeFinished") as? Bool ?? true
         aiFailureDetection = d.object(forKey: "notify_aiFailure") as? Bool ?? true
+        bambuAIFrequency = d.object(forKey: "ai_freq_bambu") as? Int ?? 300  // Default 5 min
+        sv08AIFrequency = d.object(forKey: "ai_freq_sv08") as? Int ?? 300    // Default 5 min
+    }
+
+    func sendAIConfigToServer() {
+        // Send config to conversation server
+        guard let hostStr = UserDefaults.standard.string(forKey: "serverHost"),
+              let url = URL(string: "http://\(hostStr)/ai-check-config") else { return }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "bambu_interval": bambuAIFrequency,
+            "sv08_interval": sv08AIFrequency
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        URLSession.shared.dataTask(with: request) { _, _, _ in }.resume()
     }
 
     func shouldNotify(event: String, printer: String) -> Bool {

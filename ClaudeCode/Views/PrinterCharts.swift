@@ -154,14 +154,14 @@ struct EtaHistoryChart: View {
             Chart(data) { entry in
                 LineMark(
                     x: .value("Elapsed", entry.elapsed_h),
-                    y: .value("Finish", Date(timeIntervalSince1970: entry.finish_ts))
+                    y: .value("Finish", entry.finish_ts)
                 )
                 .foregroundStyle(accent)
                 .lineStyle(StrokeStyle(lineWidth: 1.5))
 
                 PointMark(
                     x: .value("Elapsed", entry.elapsed_h),
-                    y: .value("Finish", Date(timeIntervalSince1970: entry.finish_ts))
+                    y: .value("Finish", entry.finish_ts)
                 )
                 .foregroundStyle(accent.opacity(0.4))
                 .symbolSize(8)
@@ -179,9 +179,9 @@ struct EtaHistoryChart: View {
                 AxisMarks(values: .automatic(desiredCount: 4)) { value in
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
                         .foregroundStyle(.white.opacity(0.1))
-                    if let date = value.as(Date.self) {
+                    if let ts = value.as(Double.self) {
                         AxisValueLabel {
-                            Text(formatAxisDate(date))
+                            Text(formatAxisDate(Date(timeIntervalSince1970: ts)))
                                 .font(.system(size: 9))
                         }
                         .foregroundStyle(Color(hex: "#666666"))
