@@ -29,6 +29,7 @@ class WebSocketService: ObservableObject {
     private var autoContCount = 0
     private let maxAutoContinue = 3
     private var messageQueue: [String] = []
+    private var pendingMessage: (text: String, imagePaths: [String])?
 
     init() {
         connect()
@@ -70,7 +71,13 @@ class WebSocketService: ObservableObject {
             try? await Task.sleep(nanoseconds: UInt64(reconnectDelay * 1_000_000_000))
             connect()
         }
-        reconnectDelay = min(reconnectDelay * 2, 30)
+        reconnectDelay = min(reconnectDelay * 2, 5)  // Cap at 5s (not 30)
+    }
+
+    /// Force immediate reconnect (e.g., when app returns to foreground)
+    func forceReconnect() {
+        reconnectDelay = 1.0
+        connect()
     }
 
     func sendMessage(_ text: String, imagePaths: [String] = []) {
@@ -88,8 +95,16 @@ class WebSocketService: ObservableObject {
         messages.append(assistantMsg)
         isGenerating = true
         generationStartTime = Date()
-        lastActivity = "Starting..."
+        lastActivity = "Connecting..."
         autoContCount = 0
+
+        // If not connected, queue and force reconnect
+        if connectionState != .connected {
+            pendingMessage = (text: text, imagePaths: imagePaths)
+            lastActivity = "Reconnecting..."
+            reconnect()
+            return
+        }
 
         var payload: [String: Any] = ["type": "message", "text": text]
         if !imagePaths.isEmpty {
@@ -136,6 +151,16 @@ class WebSocketService: ObservableObject {
                     if self?.connectionState != .connected {
                         self?.connectionState = .connected
                         self?.reconnectDelay = 1.0
+                        // Send any pending message that was queued while disconnected
+                        if let pending = self?.pendingMessage {
+                            self?.pendingMessage = nil
+                            self?.lastActivity = "Starting..."
+                            var payload: [String: Any] = ["type": "message", "text": pending.text]
+                            if !pending.imagePaths.isEmpty {
+                                payload["image_paths"] = pending.imagePaths
+                            }
+                            self?.sendJSON(payload)
+                        }
                     }
                     switch message {
                     case .string(let text):
@@ -290,9 +315,27 @@ class WebSocketService: ObservableObject {
         connectionState = .disconnected
         pingTimer?.invalidate()
         if let idx = currentAssistantIndex() {
-            messages[idx].isStreaming = false
+            // If there's a pending message, keep the placeholder alive for retry
+            if pendingMessage != nil {
+                // Don't mark as failed yet — will retry on reconnect
+            } else if messages[idx].content.isEmpty {
+                // Empty assistant message = connection lost before any response
+                messages[idx].isStreaming = false
+                messages[idx].content = "[Connection lost — tap New to retry]"
+                isGenerating = false
+                generationStartTime = nil
+                lastActivity = ""
+            } else {
+                messages[idx].isStreaming = false
+                isGenerating = false
+                generationStartTime = nil
+                lastActivity = ""
+            }
+        } else {
+            isGenerating = false
+            generationStartTime = nil
+            lastActivity = ""
         }
-        isGenerating = false
         reconnect()
     }
 

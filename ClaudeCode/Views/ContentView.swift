@@ -14,6 +14,7 @@ extension Color {
 
 struct ContentView: View {
     @EnvironmentObject var webSocket: WebSocketService
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab = 0
 
     var body: some View {
@@ -60,6 +61,11 @@ struct ContentView: View {
             appearance.backgroundColor = UIColor(red: 0.086, green: 0.129, blue: 0.243, alpha: 1) // #16213E
             UITabBar.appearance().standardAppearance = appearance
             UITabBar.appearance().scrollEdgeAppearance = appearance
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active && webSocket.connectionState != .connected {
+                webSocket.forceReconnect()
+            }
         }
     }
 }
