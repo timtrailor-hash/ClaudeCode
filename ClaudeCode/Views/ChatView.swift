@@ -62,15 +62,37 @@ struct ChatView: View {
                     }
                 }
 
-                // Working indicator
+                // Working indicator with elapsed time and activity
                 if ws.isGenerating {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: Color(hex: "#C9A96E")))
-                            .scaleEffect(0.7)
-                        Text("Claude is thinking...")
-                            .font(.system(size: 12))
-                            .foregroundColor(Color(hex: "#C9A96E"))
+                    VStack(spacing: 3) {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: Color(hex: "#C9A96E")))
+                                .scaleEffect(0.7)
+
+                            if let start = ws.generationStartTime {
+                                TimelineView(.periodic(from: .now, by: 1)) { context in
+                                    let elapsed = Int(context.date.timeIntervalSince(start))
+                                    let min = elapsed / 60
+                                    let sec = elapsed % 60
+                                    Text(min > 0 ? "Working \(min)m \(sec)s" : "Working \(sec)s")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(Color(hex: "#C9A96E"))
+                                }
+                            } else {
+                                Text("Working...")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(Color(hex: "#C9A96E"))
+                            }
+                        }
+
+                        if !ws.lastActivity.isEmpty {
+                            Text(ws.lastActivity)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(Color(hex: "#88AA88"))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 6)

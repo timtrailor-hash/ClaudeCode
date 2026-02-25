@@ -3,6 +3,12 @@ import SwiftUI
 struct MessageBubble: View {
     let message: ChatMessage
 
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
     var body: some View {
         HStack {
             if message.role == .user { Spacer(minLength: 40) }
@@ -73,6 +79,14 @@ struct MessageBubble: View {
                 .cornerRadius(16, corners: message.role == .user
                     ? [.topLeft, .topRight, .bottomLeft]
                     : [.topLeft, .topRight, .bottomRight])
+
+                // Timestamp
+                if !message.isStreaming {
+                    Text(Self.timeFormatter.string(from: message.timestamp))
+                        .font(.system(size: 9))
+                        .foregroundColor(Color(hex: "#555555"))
+                        .padding(.top, 2)
+                }
             }
 
             if message.role == .assistant { Spacer(minLength: 40) }

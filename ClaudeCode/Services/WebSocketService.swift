@@ -6,6 +6,8 @@ class WebSocketService: ObservableObject {
     @Published var messages: [ChatMessage] = []
     @Published var connectionState: ConnectionState = .disconnected
     @Published var isGenerating: Bool = false
+    @Published var generationStartTime: Date?
+    @Published var lastActivity: String = ""
 
     enum ConnectionState: String {
         case connected, disconnected, reconnecting
@@ -85,6 +87,8 @@ class WebSocketService: ObservableObject {
         let assistantMsg = ChatMessage(role: .assistant, content: "", isStreaming: true)
         messages.append(assistantMsg)
         isGenerating = true
+        generationStartTime = Date()
+        lastActivity = "Starting..."
         autoContCount = 0
 
         var payload: [String: Any] = ["type": "message", "text": text]
@@ -159,10 +163,22 @@ class WebSocketService: ObservableObject {
         switch event.type {
         case "text":
             appendToCurrentAssistant(event.content ?? "")
+            lastActivity = "Writing..."
 
         case "tool":
             if let content = event.content {
                 appendToolToCurrentAssistant(content)
+                lastActivity = content
+            }
+
+        case "activity":
+            if let content = event.content {
+                switch content {
+                case "tool_result": lastActivity = "Processing tool result..."
+                case "processing": lastActivity = "Processing..."
+                case "rate_limited": lastActivity = "Rate limited, waiting..."
+                default: lastActivity = content.capitalized + "..."
+                }
             }
 
         case "image":
@@ -181,6 +197,8 @@ class WebSocketService: ObservableObject {
                 messages[idx].isStreaming = false
             }
             isGenerating = false
+            generationStartTime = nil
+            lastActivity = ""
 
             // Auto-continue on truncation
             if event.truncated == true && autoContCount < maxAutoContinue {
@@ -217,6 +235,8 @@ class WebSocketService: ObservableObject {
             let errorMsg = ChatMessage(role: .system, content: "Error: \(event.content ?? "Unknown")")
             messages.append(errorMsg)
             isGenerating = false
+            generationStartTime = nil
+            lastActivity = ""
 
         case "cancelled":
             if let idx = currentAssistantIndex() {
@@ -224,6 +244,8 @@ class WebSocketService: ObservableObject {
                 messages[idx].content += "\n\n[Cancelled]"
             }
             isGenerating = false
+            generationStartTime = nil
+            lastActivity = ""
 
         case "new_session_ok":
             break
