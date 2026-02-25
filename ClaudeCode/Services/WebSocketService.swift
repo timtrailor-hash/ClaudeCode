@@ -296,13 +296,13 @@ class WebSocketService: ObservableObject {
     }
 
     private func appendToCurrentAssistant(_ text: String) {
-        if let idx = currentAssistantIndex() {
+        if let idx = currentOrRecoverAssistantIndex() {
             messages[idx].content += text
         }
     }
 
     private func appendToolToCurrentAssistant(_ content: String) {
-        if let idx = currentAssistantIndex() {
+        if let idx = currentOrRecoverAssistantIndex() {
             messages[idx].toolUse.append(ToolEvent(content: content))
         }
     }
@@ -311,31 +311,29 @@ class WebSocketService: ObservableObject {
         messages.indices.last(where: { messages[$0].role == .assistant && messages[$0].isStreaming })
     }
 
+    /// Find streaming assistant message, or recover the last assistant message
+    /// if it was marked non-streaming due to a WS disconnect (replay scenario).
+    private func currentOrRecoverAssistantIndex() -> Int? {
+        if let idx = currentAssistantIndex() {
+            return idx
+        }
+        // Recovery: if we're generating but no streaming message exists,
+        // the last assistant message was closed by a disconnect. Re-enable it.
+        if isGenerating,
+           let idx = messages.indices.last(where: { messages[$0].role == .assistant }) {
+            messages[idx].isStreaming = true
+            return idx
+        }
+        return nil
+    }
+
     private func handleDisconnect() {
         connectionState = .disconnected
         pingTimer?.invalidate()
-        if let idx = currentAssistantIndex() {
-            // If there's a pending message, keep the placeholder alive for retry
-            if pendingMessage != nil {
-                // Don't mark as failed yet — will retry on reconnect
-            } else if messages[idx].content.isEmpty {
-                // Empty assistant message = connection lost before any response
-                messages[idx].isStreaming = false
-                messages[idx].content = "[Connection lost — tap New to retry]"
-                isGenerating = false
-                generationStartTime = nil
-                lastActivity = ""
-            } else {
-                messages[idx].isStreaming = false
-                isGenerating = false
-                generationStartTime = nil
-                lastActivity = ""
-            }
-        } else {
-            isGenerating = false
-            generationStartTime = nil
-            lastActivity = ""
-        }
+        // Keep isStreaming=true on the assistant message so that when the WS
+        // reconnects and the server replays events, they can still append.
+        // Only the "done" event should finalise the message.
+        lastActivity = "Reconnecting..."
         reconnect()
     }
 

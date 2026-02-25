@@ -166,6 +166,7 @@ struct EtaHistoryChart: View {
                 .foregroundStyle(accent.opacity(0.4))
                 .symbolSize(8)
             }
+            .chartYScale(domain: yDomain)
             .chartXAxisLabel("Elapsed (h)", alignment: .center)
             .chartXAxis {
                 AxisMarks(values: .automatic(desiredCount: 5)) {
@@ -204,6 +205,17 @@ struct EtaHistoryChart: View {
                 .padding(.trailing, 4)
             }
         }
+    }
+
+    /// Tight Y-axis domain based on actual data range + 10% padding (min 30 min)
+    private var yDomain: ClosedRange<Double> {
+        let timestamps = data.map(\.finish_ts)
+        guard let minTs = timestamps.min(), let maxTs = timestamps.max() else {
+            return 0...1
+        }
+        let range = maxTs - minTs
+        let padding = max(range * 0.1, 1800) // At least 30 min padding
+        return (minTs - padding)...(maxTs + padding)
     }
 
     private func formatAxisDate(_ date: Date) -> String {
