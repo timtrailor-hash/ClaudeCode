@@ -27,27 +27,15 @@ struct SpeedProfileChart: View {
     let currentLayer: Int?
     let currentSpeedPct: Int?
 
-    @State private var chartZoom: CGFloat = 1.0
-    @GestureState private var pinchScale: CGFloat = 1.0
-
     private let accent = Color(hex: "#C9A96E")
     private let chartBg = Color(hex: "#0D1520")
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Speed Profile")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Color(hex: "#AAAAAA"))
-                Spacer()
-                if chartZoom > 1.01 {
-                    Text(String(format: "%.1fx", chartZoom * pinchScale))
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundColor(accent.opacity(0.7))
-                }
-            }
+            Text("Speed Profile")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(Color(hex: "#AAAAAA"))
 
-            ScrollView([.horizontal, .vertical], showsIndicators: false) {
             Chart {
                 // Past layers (solid green)
                 ForEach(data.filter { $0.status == "past" }) { entry in
@@ -108,30 +96,10 @@ struct SpeedProfileChart: View {
                         .foregroundStyle(Color(hex: "#888888"))
                 }
             }
-            .frame(height: 160)
+            .frame(height: 180)
             .padding(8)
             .background(chartBg)
             .cornerRadius(10)
-            .scaleEffect(chartZoom * pinchScale, anchor: .center)
-            .frame(
-                width: chartZoom * pinchScale > 1 ? 350 * chartZoom * pinchScale : nil,
-                height: chartZoom * pinchScale > 1 ? 160 * chartZoom * pinchScale : nil
-            )
-            .gesture(
-                MagnificationGesture()
-                    .updating($pinchScale) { value, state, _ in
-                        state = value
-                    }
-                    .onEnded { value in
-                        chartZoom = min(max(chartZoom * value, 1.0), 4.0)
-                    }
-            )
-            .onTapGesture(count: 2) {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    chartZoom = 1.0
-                }
-            }
-            } // ScrollView
 
             // Legend
             HStack(spacing: 12) {
@@ -152,9 +120,6 @@ struct SpeedProfileChart: View {
 
 struct EtaHistoryChart: View {
     let data: [EtaHistoryEntry]
-
-    @State private var chartZoom: CGFloat = 1.0
-    @GestureState private var pinchScale: CGFloat = 1.0
 
     private let accent = Color(hex: "#C9A96E")
     private let chartBg = Color(hex: "#0D1520")
@@ -186,15 +151,8 @@ struct EtaHistoryChart: View {
                     .background((abs(driftSec) < 900 ? Color.green : driftSec > 0 ? Color.red : Color.green).opacity(0.15))
                     .cornerRadius(4)
                 }
-
-                if chartZoom > 1.01 {
-                    Text(String(format: "%.1fx", chartZoom * pinchScale))
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundColor(accent.opacity(0.7))
-                }
             }
 
-            ScrollView([.horizontal, .vertical], showsIndicators: false) {
             Chart(data) { entry in
                 LineMark(
                     x: .value("Elapsed", entry.elapsed_h),
@@ -234,30 +192,10 @@ struct EtaHistoryChart: View {
                     }
                 }
             }
-            .frame(height: 170)
+            .frame(height: 190)
             .padding(8)
             .background(chartBg)
             .cornerRadius(10)
-            .scaleEffect(chartZoom * pinchScale, anchor: .center)
-            .frame(
-                width: chartZoom * pinchScale > 1 ? 350 * chartZoom * pinchScale : nil,
-                height: chartZoom * pinchScale > 1 ? 170 * chartZoom * pinchScale : nil
-            )
-            .gesture(
-                MagnificationGesture()
-                    .updating($pinchScale) { value, state, _ in
-                        state = value
-                    }
-                    .onEnded { value in
-                        chartZoom = min(max(chartZoom * value, 1.0), 4.0)
-                    }
-            )
-            .onTapGesture(count: 2) {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    chartZoom = 1.0
-                }
-            }
-            } // ScrollView
 
             // Current ETA label
             if let last = data.last {
@@ -296,27 +234,15 @@ struct ComplexityChart: View {
     let data: [SpeedGraphEntry]
     let currentLayer: Int?
 
-    @State private var chartZoom: CGFloat = 1.0
-    @GestureState private var pinchScale: CGFloat = 1.0
-
     private let accent = Color(hex: "#C9A96E")
     private let chartBg = Color(hex: "#0D1520")
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Layer Complexity")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Color(hex: "#AAAAAA"))
-                Spacer()
-                if chartZoom > 1.01 {
-                    Text(String(format: "%.1fx", chartZoom * pinchScale))
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundColor(accent.opacity(0.7))
-                }
-            }
+            Text("Layer Complexity")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(Color(hex: "#AAAAAA"))
 
-            ScrollView([.horizontal, .vertical], showsIndicators: false) {
             Chart {
                 // Area fill under curve
                 ForEach(data) { entry in
@@ -387,30 +313,10 @@ struct ComplexityChart: View {
                         .foregroundStyle(Color(hex: "#888888"))
                 }
             }
-            .frame(height: 160)
+            .frame(height: 180)
             .padding(8)
             .background(chartBg)
             .cornerRadius(10)
-            .scaleEffect(chartZoom * pinchScale, anchor: .center)
-            .frame(
-                width: chartZoom * pinchScale > 1 ? 350 * chartZoom * pinchScale : nil,
-                height: chartZoom * pinchScale > 1 ? 160 * chartZoom * pinchScale : nil
-            )
-            .gesture(
-                MagnificationGesture()
-                    .updating($pinchScale) { value, state, _ in
-                        state = value
-                    }
-                    .onEnded { value in
-                        chartZoom = min(max(chartZoom * value, 1.0), 4.0)
-                    }
-            )
-            .onTapGesture(count: 2) {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    chartZoom = 1.0
-                }
-            }
-            } // ScrollView
 
             // Legend
             HStack(spacing: 12) {
