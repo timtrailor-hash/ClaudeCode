@@ -188,7 +188,13 @@ struct SystemHealthSection: View {
         guard let url = URL(string: "http://\(serverHost)/system-health") else { return }
         isLoading = true
 
-        URLSession.shared.dataTask(with: url) { data, _, error in
+        var request = URLRequest(url: url)
+        let token = UserDefaults.standard.string(forKey: "authToken") ?? ""
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        URLSession.shared.dataTask(with: request) { data, _, error in
             DispatchQueue.main.async {
                 isLoading = false
                 lastFetched = Date()

@@ -408,6 +408,7 @@ struct ChatView: View {
         for img in images {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
+            request.setValue("Bearer \(UserDefaults.standard.string(forKey: "authToken") ?? "")", forHTTPHeaderField: "Authorization")
 
             let boundary = UUID().uuidString
             request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")

@@ -4,6 +4,7 @@ struct SettingsView: View {
     @EnvironmentObject var ws: WebSocketService
     @StateObject private var notifPrefs = NotificationPreferences.shared
     @State private var hostInput = ""
+    @State private var tokenInput = ""
     @AppStorage("appZoomLevel") private var zoomLevel: Double = 1.0
 
     private let accent = Color(hex: "#C9A96E")
@@ -25,6 +26,19 @@ struct SettingsView: View {
                             .textInputAutocapitalization(.never)
                             .onSubmit {
                                 ws.serverHost = hostInput
+                            }
+                    }
+
+                    HStack {
+                        Text("Token")
+                        Spacer()
+                        SecureField("Auth Token", text: $tokenInput)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundColor(accent)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .onSubmit {
+                                ws.authToken = tokenInput
                             }
                     }
 
@@ -145,6 +159,7 @@ struct SettingsView: View {
         }
         .onAppear {
             hostInput = ws.serverHost
+            tokenInput = ws.authToken
         }
     }
 

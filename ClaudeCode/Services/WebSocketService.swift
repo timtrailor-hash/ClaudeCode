@@ -65,6 +65,14 @@ class WebSocketService: ObservableObject {
         }
     }
 
+    var authToken: String {
+        get { UserDefaults.standard.string(forKey: "authToken") ?? "" }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "authToken")
+            reconnect()
+        }
+    }
+
     private var webSocket: URLSessionWebSocketTask?
     private var session: URLSession?
     private var pingTimer: Timer?
@@ -99,7 +107,7 @@ class WebSocketService: ObservableObject {
     func connect() {
         disconnect()
 
-        let urlString = "ws://\(serverHost)/ws"
+        let urlString = "ws://\(serverHost)/ws?token=\(authToken)"
         guard let url = URL(string: urlString) else {
             connectionState = .disconnected
             return
