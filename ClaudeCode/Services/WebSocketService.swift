@@ -266,6 +266,8 @@ class WebSocketService: ObservableObject {
                     if self?.connectionState != .connected {
                         self?.connectionState = .connected
                         self?.reconnectDelay = 1.0
+                        // Auto-dismiss "Connection lost" system messages from previous disconnect
+                        self?.messages.removeAll { $0.role == .system && $0.content.contains("Connection to Claude lost") }
                         // Sync permission level on connect
                         if let level = self?.permissionLevel {
                             self?.sendJSON([
@@ -528,7 +530,7 @@ class WebSocketService: ObservableObject {
         // Keep isStreaming=true on the assistant message so that when the WS
         // reconnects and the server replays events, they can still append.
         // Only the "done" event should finalise the message.
-        lastActivity = "Reconnecting..."
+        lastActivity = isGenerating ? "Reconnecting... Claude is still working" : "Reconnecting..."
         reconnect()
     }
 
@@ -556,14 +558,21 @@ class WebSocketService: ObservableObject {
             }
         }
 
-        // Watchdog: auto-reset isGenerating if no events for 60 seconds
+        // Watchdog: auto-reset isGenerating if no events for a long time.
+        // Uses two thresholds:
+        //  - 90s while still connected → likely the turn genuinely stalled
+        //  - 120s if disconnected → connection is truly gone, give up
         watchdogTimer?.invalidate()
         watchdogTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self else { return }
-                if self.isGenerating,
-                   let lastEvent = self.lastEventTime,
-                   Date().timeIntervalSince(lastEvent) > 60 {
+                guard self.isGenerating,
+                      let lastEvent = self.lastEventTime else { return }
+
+                let silentSeconds = Date().timeIntervalSince(lastEvent)
+                let threshold: TimeInterval = self.connectionState == .connected ? 90 : 120
+
+                if silentSeconds > threshold {
                     // Auto-reset stale generation state
                     if let idx = self.currentAssistantIndex() {
                         self.messages[idx].isStreaming = false
