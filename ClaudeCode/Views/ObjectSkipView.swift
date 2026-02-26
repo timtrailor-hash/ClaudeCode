@@ -301,6 +301,15 @@ struct ObjectSkipView: View {
 
     // MARK: - Networking
 
+    private func authedRequest(url: URL) -> URLRequest {
+        var request = URLRequest(url: url)
+        let token = ws.authToken
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        return request
+    }
+
     private func fetchObjects() async {
         loading = true
         let urlString = "http://\(ws.serverHost)/printer-objects"
@@ -311,7 +320,8 @@ struct ObjectSkipView: View {
         }
 
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
+            let request = authedRequest(url: url)
+            let (data, _) = try await URLSession.shared.data(for: request)
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 errorMessage = "Invalid response"
                 loading = false
@@ -358,7 +368,7 @@ struct ObjectSkipView: View {
             let urlString = "http://\(ws.serverHost)/exclude-object"
             guard let url = URL(string: urlString) else { continue }
 
-            var request = URLRequest(url: url)
+            var request = authedRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try? JSONSerialization.data(withJSONObject: ["name": name])

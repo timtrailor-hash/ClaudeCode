@@ -543,7 +543,8 @@ struct PrinterView: View {
     }
 
     private func cameraImageView(imageName: String) -> some View {
-        let urlString = "\(serverBaseURL)/printer-image/\(imageName)?t=\(Int(lastRefresh.timeIntervalSince1970))"
+        let token = ws.authToken
+        let urlString = "\(serverBaseURL)/printer-image/\(imageName)?t=\(Int(lastRefresh.timeIntervalSince1970))\(token.isEmpty ? "" : "&token=\(token)")"
         return AsyncImage(url: URL(string: urlString)) { phase in
             switch phase {
             case .success(let image):
@@ -576,7 +577,8 @@ struct PrinterView: View {
     }
 
     private func thumbnailView(imageName: String) -> some View {
-        let urlString = "\(serverBaseURL)/printer-image/\(imageName)?t=\(Int(lastRefresh.timeIntervalSince1970))"
+        let token = ws.authToken
+        let urlString = "\(serverBaseURL)/printer-image/\(imageName)?t=\(Int(lastRefresh.timeIntervalSince1970))\(token.isEmpty ? "" : "&token=\(token)")"
         return HStack {
             AsyncImage(url: URL(string: urlString)) { phase in
                 switch phase {
@@ -894,6 +896,15 @@ struct PrinterView: View {
 
     // MARK: - Data Fetching
 
+    private func authedRequest(url: URL) -> URLRequest {
+        var request = URLRequest(url: url)
+        let token = ws.authToken
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        return request
+    }
+
     private func fetchPrinterStatus() async {
         let urlString = "\(serverBaseURL)/printer-status"
         guard let url = URL(string: urlString) else {
@@ -903,7 +914,8 @@ struct PrinterView: View {
         }
 
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
+            let request = authedRequest(url: url)
+            let (data, response) = try await URLSession.shared.data(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse,
                   (200...299).contains(httpResponse.statusCode) else {

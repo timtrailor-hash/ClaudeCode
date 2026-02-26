@@ -509,6 +509,15 @@ struct WorkView: View {
 
     // MARK: - Networking
 
+    private func authedRequest(url: URL) -> URLRequest {
+        var request = URLRequest(url: url)
+        let token = ws.authToken
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        return request
+    }
+
     private func fetchAll() async {
         await fetchStatus()
         if selectedSection == 2 {
@@ -524,7 +533,8 @@ struct WorkView: View {
         }
 
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
+            let request = authedRequest(url: url)
+            let (data, response) = try await URLSession.shared.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200 else {
                 errorMessage = "Server returned an error"
@@ -545,7 +555,8 @@ struct WorkView: View {
         guard let url = URL(string: "http://\(ws.serverHost)/slack-messages") else { return }
         slackLoading = true
         do {
-            let (data, response) = try await URLSession.shared.data(from: url)
+            let request = authedRequest(url: url)
+            let (data, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
                 slackMessages = SlackResponse(from: data).messages
             }
@@ -562,7 +573,8 @@ struct WorkView: View {
         Task {
             guard let url = URL(string: "http://\(ws.serverHost)/work-search?q=\(query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query)") else { return }
             do {
-                let (data, response) = try await URLSession.shared.data(from: url)
+                let request = authedRequest(url: url)
+                let (data, response) = try await URLSession.shared.data(for: request)
                 if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 {
                     searchResults = SearchResponse(from: data).results
                 }
