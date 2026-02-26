@@ -7,6 +7,12 @@ struct HealthItem: Identifiable, Decodable {
     let name: String
     let timestamp: String?
     let detail: String?
+    let uncommittedCount: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case name, timestamp, detail
+        case uncommittedCount = "uncommitted_count"
+    }
 }
 
 struct HealthResponse: Decodable {
@@ -93,6 +99,13 @@ struct SystemHealthSection: View {
     // MARK: - Status color logic
 
     private func statusColor(for item: HealthItem) -> Color {
+        // GitHub repos: color by uncommitted count (0=green, 1=amber, >1=red)
+        if item.name.hasPrefix("GitHub:"), let count = item.uncommittedCount {
+            if count == 0 { return .green }
+            if count == 1 { return Color.orange }
+            return .red
+        }
+
         guard let ts = item.timestamp, let date = parseISO(ts) else {
             return .red
         }
@@ -115,6 +128,12 @@ struct SystemHealthSection: View {
     }
 
     private func relativeTime(for item: HealthItem) -> String {
+        // GitHub repos: show uncommitted count as the primary metric
+        if item.name.hasPrefix("GitHub:"), let count = item.uncommittedCount {
+            if count == 0 { return "clean" }
+            return "\(count) dirty"
+        }
+
         guard let ts = item.timestamp, let date = parseISO(ts) else {
             return "unknown"
         }
@@ -182,6 +201,9 @@ struct SystemHealthSection: View {
 
                 // Check for stale backup and alert
                 checkBackupStaleness(items: response.items)
+
+                // Check for uncommitted code across repos
+                checkUncommittedCode(items: response.items)
             }
         }.resume()
     }
@@ -200,6 +222,32 @@ struct SystemHealthSection: View {
                 postBackupAlert(message: "Last backup was \(days) days ago. Check the backup daemon.")
             }
         }
+    }
+
+    /// Post a local notification if any repo has >1 uncommitted changes
+    private func checkUncommittedCode(items: [HealthItem]) {
+        let dirtyRepos = items.filter {
+            $0.name.hasPrefix("GitHub:") && ($0.uncommittedCount ?? 0) > 1
+        }
+        guard !dirtyRepos.isEmpty else { return }
+
+        let names = dirtyRepos.map {
+            let count = $0.uncommittedCount ?? 0
+            let short = $0.name.replacingOccurrences(of: "GitHub: ", with: "")
+            return "\(short) (\(count))"
+        }.joined(separator: ", ")
+
+        let content = UNMutableNotificationContent()
+        content.title = "Uncommitted Code"
+        content.body = "Repos with uncommitted changes: \(names)"
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "uncommitted_code_warning",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
     }
 
     private func postBackupAlert(message: String) {
