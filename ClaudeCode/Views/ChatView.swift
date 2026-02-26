@@ -53,7 +53,7 @@ struct ChatView: View {
                         .padding(.horizontal, 10)
                         .padding(.top, 8)
                     }
-                    .scrollDismissesKeyboard(.immediately)
+                    .scrollDismissesKeyboard(.interactively)
                     .simultaneousGesture(DragGesture().onChanged { _ in
                         autoScroll = false
                     })
@@ -73,6 +73,9 @@ struct ChatView: View {
                             .padding(.bottom, 8)
                         }
                     }
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        bottomBar
+                    }
                     .onChange(of: ws.messages.last?.content) { _, _ in
                         if autoScroll {
                             proxy.scrollTo("bottom")
@@ -88,200 +91,6 @@ struct ChatView: View {
                         proxy.scrollTo("bottom")
                     }
                 }
-
-                // Working indicator with elapsed time and activity
-                if ws.isGenerating {
-                    VStack(spacing: 3) {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: Color(hex: "#C9A96E")))
-                                .scaleEffect(0.7)
-
-                            if let start = ws.generationStartTime {
-                                TimelineView(.periodic(from: .now, by: 1)) { context in
-                                    let elapsed = Int(context.date.timeIntervalSince(start))
-                                    let min = elapsed / 60
-                                    let sec = elapsed % 60
-                                    Text(min > 0 ? "Working \(min)m \(sec)s" : "Working \(sec)s")
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(Color(hex: "#C9A96E"))
-                                }
-                            } else {
-                                Text("Working...")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(Color(hex: "#C9A96E"))
-                            }
-                        }
-
-                        if !ws.lastActivity.isEmpty {
-                            Text(ws.lastActivity)
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundColor(Color(hex: "#88AA88"))
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
-                    .background(Color(hex: "#1A2A1A"))
-                }
-
-                // Permission prompt — Claude needs user approval to use a tool
-                if let perm = ws.pendingPermission {
-                    VStack(spacing: 8) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "lock.shield")
-                                .font(.system(size: 14))
-                                .foregroundColor(Color(hex: "#C9A96E"))
-                            Text("Permission Required")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(Color(hex: "#C9A96E"))
-                            if ws.permissionQueue.count > 1 {
-                                Text("+\(ws.permissionQueue.count - 1)")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(Color(hex: "#1A1A2E"))
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color(hex: "#C9A96E"))
-                                    .cornerRadius(8)
-                            }
-                        }
-
-                        Text(perm.summary)
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(Color(hex: "#E0E0E0"))
-                            .lineLimit(3)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        HStack(spacing: 12) {
-                            Button {
-                                ws.denyPermission(perm.id)
-                            } label: {
-                                Text("Deny")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(Color(hex: "#EE5555"))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 8)
-                                    .background(Color(hex: "#3A1A1A"))
-                                    .cornerRadius(8)
-                            }
-
-                            Button {
-                                ws.allowPermission(perm.id)
-                            } label: {
-                                Text("Allow")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(Color(hex: "#1A1A2E"))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 8)
-                                    .background(Color(hex: "#C9A96E"))
-                                    .cornerRadius(8)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(Color(hex: "#1A2A3A"))
-                    .cornerRadius(12)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                }
-
-                // Pending image thumbnails
-                if !pendingImages.isEmpty {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(pendingImages) { img in
-                                ZStack(alignment: .topTrailing) {
-                                    Image(uiImage: img.thumbnail)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: 60, height: 60)
-                                        .cornerRadius(8)
-                                        .clipped()
-
-                                    Button {
-                                        pendingImages.removeAll { $0.id == img.id }
-                                    } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.system(size: 18))
-                                            .foregroundColor(.white)
-                                            .background(Circle().fill(Color.black.opacity(0.6)))
-                                    }
-                                    .offset(x: 4, y: -4)
-                                }
-                            }
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                    }
-                    .background(Color(hex: "#16213E"))
-                }
-
-                // Input area
-                HStack(alignment: .bottom, spacing: 6) {
-                    // Attach button — camera, photo library, or file
-                    Menu {
-                        Button {
-                            showCamera = true
-                        } label: {
-                            Label("Take Photo", systemImage: "camera")
-                        }
-
-                        Button {
-                            showPhotoPicker = true
-                        } label: {
-                            Label("Photo Library", systemImage: "photo.on.rectangle")
-                        }
-
-                        Button {
-                            showFilePicker = true
-                        } label: {
-                            Label("Choose File", systemImage: "doc")
-                        }
-                    } label: {
-                        Image(systemName: "paperclip")
-                            .font(.system(size: 20))
-                            .foregroundColor(Color(hex: "#C9A96E"))
-                            .frame(width: 36, height: 42)
-                    }
-
-                    TextField("Ask anything...", text: $inputText, axis: .vertical)
-                        .lineLimit(1...5)
-                        .textFieldStyle(.plain)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(Color(hex: "#2A2A4A"))
-                        .cornerRadius(20)
-                        .foregroundColor(Color(hex: "#E0E0E0"))
-                        .focused($inputFocused)
-
-                    // Show send button if text is typed (queues during generation),
-                    // otherwise show stop button during generation
-                    if ws.isGenerating && !hasInput {
-                        Button(action: { ws.cancelGeneration() }) {
-                            Image(systemName: "stop.fill")
-                                .font(.system(size: 16, weight: .bold))
-                                .frame(width: 42, height: 42)
-                                .background(Color(hex: "#EE5555"))
-                                .foregroundColor(.white)
-                                .clipShape(Circle())
-                        }
-                    } else {
-                        Button(action: { send() }) {
-                            Image(systemName: "arrow.up")
-                                .font(.system(size: 16, weight: .bold))
-                                .frame(width: 42, height: 42)
-                                .background(canSend ? Color(hex: "#C9A96E") : Color(hex: "#555555"))
-                                .foregroundColor(canSend ? Color(hex: "#1A1A2E") : Color(hex: "#888888"))
-                                .clipShape(Circle())
-                        }
-                        .disabled(!canSend)
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(Color(hex: "#16213E"))
             }
             .background(Color(hex: "#1A1A2E"))
             .navigationTitle("Claude Code")
@@ -344,6 +153,210 @@ struct ChatView: View {
         case .connected: return .green
         case .disconnected: return .red
         case .reconnecting: return .yellow
+        }
+    }
+
+    // Bottom bar: working indicator + permission prompt + pending images + input
+    // Uses safeAreaInset so it always stays above the keyboard
+    @ViewBuilder
+    private var bottomBar: some View {
+        VStack(spacing: 0) {
+            // Working indicator with elapsed time and activity
+            if ws.isGenerating {
+                VStack(spacing: 3) {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: Color(hex: "#C9A96E")))
+                            .scaleEffect(0.7)
+
+                        if let start = ws.generationStartTime {
+                            TimelineView(.periodic(from: .now, by: 1)) { context in
+                                let elapsed = Int(context.date.timeIntervalSince(start))
+                                let min = elapsed / 60
+                                let sec = elapsed % 60
+                                Text(min > 0 ? "Working \(min)m \(sec)s" : "Working \(sec)s")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(Color(hex: "#C9A96E"))
+                            }
+                        } else {
+                            Text("Working...")
+                                .font(.system(size: 12))
+                                .foregroundColor(Color(hex: "#C9A96E"))
+                        }
+                    }
+
+                    if !ws.lastActivity.isEmpty {
+                        Text(ws.lastActivity)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(Color(hex: "#88AA88"))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .background(Color(hex: "#1A2A1A"))
+            }
+
+            // Permission prompt — Claude needs user approval to use a tool
+            if let perm = ws.pendingPermission {
+                VStack(spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "lock.shield")
+                            .font(.system(size: 14))
+                            .foregroundColor(Color(hex: "#C9A96E"))
+                        Text("Permission Required")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(Color(hex: "#C9A96E"))
+                        if ws.permissionQueue.count > 1 {
+                            Text("+\(ws.permissionQueue.count - 1)")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(hex: "#1A1A2E"))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color(hex: "#C9A96E"))
+                                .cornerRadius(8)
+                        }
+                    }
+
+                    Text(perm.summary)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(Color(hex: "#E0E0E0"))
+                        .lineLimit(3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    HStack(spacing: 12) {
+                        Button {
+                            ws.denyPermission(perm.id)
+                        } label: {
+                            Text("Deny")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(Color(hex: "#EE5555"))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .background(Color(hex: "#3A1A1A"))
+                                .cornerRadius(8)
+                        }
+
+                        Button {
+                            ws.allowPermission(perm.id)
+                        } label: {
+                            Text("Allow")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(Color(hex: "#1A1A2E"))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .background(Color(hex: "#C9A96E"))
+                                .cornerRadius(8)
+                        }
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Color(hex: "#1A2A3A"))
+                .cornerRadius(12)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+            }
+
+            // Pending image thumbnails
+            if !pendingImages.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(pendingImages) { img in
+                            ZStack(alignment: .topTrailing) {
+                                Image(uiImage: img.thumbnail)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 60, height: 60)
+                                    .cornerRadius(8)
+                                    .clipped()
+
+                                Button {
+                                    pendingImages.removeAll { $0.id == img.id }
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(.white)
+                                        .background(Circle().fill(Color.black.opacity(0.6)))
+                                }
+                                .offset(x: 4, y: -4)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                }
+                .background(Color(hex: "#16213E"))
+            }
+
+            // Input area
+            HStack(alignment: .bottom, spacing: 6) {
+                // Attach button — camera, photo library, or file
+                Menu {
+                    Button {
+                        showCamera = true
+                    } label: {
+                        Label("Take Photo", systemImage: "camera")
+                    }
+
+                    Button {
+                        showPhotoPicker = true
+                    } label: {
+                        Label("Photo Library", systemImage: "photo.on.rectangle")
+                    }
+
+                    Button {
+                        showFilePicker = true
+                    } label: {
+                        Label("Choose File", systemImage: "doc")
+                    }
+                } label: {
+                    Image(systemName: "paperclip")
+                        .font(.system(size: 20))
+                        .foregroundColor(Color(hex: "#C9A96E"))
+                        .frame(width: 36, height: 42)
+                }
+
+                TextField("Ask anything...", text: $inputText, axis: .vertical)
+                    .lineLimit(1...5)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Color(hex: "#2A2A4A"))
+                    .cornerRadius(20)
+                    .foregroundColor(Color(hex: "#E0E0E0"))
+                    .focused($inputFocused)
+                    .onSubmit { if canSend { send() } }
+
+                // Show send button if text is typed (queues during generation),
+                // otherwise show stop button during generation
+                if ws.isGenerating && !hasInput {
+                    Button(action: { ws.cancelGeneration() }) {
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .frame(width: 42, height: 42)
+                            .background(Color(hex: "#EE5555"))
+                            .foregroundColor(.white)
+                            .clipShape(Circle())
+                    }
+                    .contentShape(Circle())
+                } else {
+                    Button(action: { send() }) {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 16, weight: .bold))
+                            .frame(width: 42, height: 42)
+                            .background(canSend ? Color(hex: "#C9A96E") : Color(hex: "#555555"))
+                            .foregroundColor(canSend ? Color(hex: "#1A1A2E") : Color(hex: "#888888"))
+                            .clipShape(Circle())
+                    }
+                    .contentShape(Circle())
+                    .disabled(!canSend)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color(hex: "#16213E"))
         }
     }
 
