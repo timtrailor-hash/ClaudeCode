@@ -385,6 +385,13 @@ class WebSocketService: ObservableObject {
         case "pong":
             break
 
+        case "push_message":
+            // Standalone message pushed from terminal session — create its own assistant bubble
+            if let content = event.content {
+                let msg = ChatMessage(role: .assistant, content: content, isStreaming: false)
+                messages.append(msg)
+            }
+
         case "printer_alert":
             let printer = event.content ?? ""
             let alertMsg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["message"] as? String ?? printer

@@ -12,7 +12,7 @@ struct GovernorsView: View {
     private var governorsURL: URL? {
         let parts = ws.serverHost.split(separator: ":")
         let ip = parts.first ?? "100.112.125.42"
-        return URL(string: "http://\(ip):8080/governors/")
+        return URL(string: "http://\(ip):8080/governors/?app_user=tim")
     }
 
     var body: some View {

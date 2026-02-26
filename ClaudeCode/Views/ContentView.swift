@@ -12,41 +12,65 @@ extension Color {
     }
 }
 
+/// Wraps content with scaleEffect zoom. At 1.0x no change; above 1.0x content
+/// is scaled up from the top-leading corner inside a scroll view.
+struct ZoomedView<Content: View>: View {
+    let zoom: Double
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        if zoom > 1.01 {
+            ScrollView([.horizontal, .vertical], showsIndicators: false) {
+                content()
+                    .scaleEffect(zoom, anchor: .topLeading)
+                    .frame(
+                        width: UIScreen.main.bounds.width * zoom,
+                        height: UIScreen.main.bounds.height * zoom
+                    )
+            }
+        } else {
+            content()
+        }
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject var webSocket: WebSocketService
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab = 0
+    @AppStorage("appZoomLevel") private var zoomLevel: Double = 1.0
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            ChatView()
+            ZoomedView(zoom: zoomLevel) { ChatView() }
                 .tabItem {
                     Image(systemName: "bubble.left.and.bubble.right.fill")
                     Text("Chat")
                 }
                 .tag(0)
 
-            PrinterView()
+            ZoomedView(zoom: zoomLevel) { PrinterView() }
                 .tabItem {
                     Image(systemName: "printer.fill")
                     Text("Printers")
                 }
                 .tag(1)
 
-            GovernorsView()
+            ZoomedView(zoom: zoomLevel) { GovernorsView() }
                 .tabItem {
                     Image(systemName: "building.columns.fill")
                     Text("Governors")
                 }
                 .tag(2)
 
-            WorkView()
+            ZoomedView(zoom: zoomLevel) { WorkView() }
                 .tabItem {
                     Image(systemName: "briefcase.fill")
                     Text("Work")
                 }
                 .tag(3)
 
+            // Settings is NOT zoomed (so the slider remains usable at all zoom levels)
             SettingsView()
                 .tabItem {
                     Image(systemName: "gear")

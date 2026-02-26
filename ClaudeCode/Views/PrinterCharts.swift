@@ -37,7 +37,6 @@ struct SpeedProfileChart: View {
                 .foregroundColor(Color(hex: "#AAAAAA"))
 
             Chart {
-                // Past layers (solid green)
                 ForEach(data.filter { $0.status == "past" }) { entry in
                     LineMark(
                         x: .value("Layer", entry.layer),
@@ -47,7 +46,6 @@ struct SpeedProfileChart: View {
                     .lineStyle(StrokeStyle(lineWidth: 1.5))
                 }
 
-                // Future layers (dashed green)
                 ForEach(data.filter { $0.status == "future" }) { entry in
                     LineMark(
                         x: .value("Layer", entry.layer),
@@ -57,7 +55,6 @@ struct SpeedProfileChart: View {
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
                 }
 
-                // Current layer marker
                 if let current = data.first(where: { $0.status == "current" }) {
                     PointMark(
                         x: .value("Layer", current.layer),
@@ -71,7 +68,6 @@ struct SpeedProfileChart: View {
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                 }
 
-                // 100% reference line
                 RuleMark(y: .value("100%", 100))
                     .foregroundStyle(.white.opacity(0.2))
                     .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [4, 4]))
@@ -244,7 +240,6 @@ struct ComplexityChart: View {
                 .foregroundColor(Color(hex: "#AAAAAA"))
 
             Chart {
-                // Area fill under curve
                 ForEach(data) { entry in
                     AreaMark(
                         x: .value("Layer", entry.layer),
@@ -259,7 +254,6 @@ struct ComplexityChart: View {
                     )
                 }
 
-                // Past layers (solid red)
                 ForEach(data.filter { $0.status == "past" }) { entry in
                     LineMark(
                         x: .value("Layer", entry.layer),
@@ -269,7 +263,6 @@ struct ComplexityChart: View {
                     .lineStyle(StrokeStyle(lineWidth: 1.5))
                 }
 
-                // Future layers (dashed red)
                 ForEach(data.filter { $0.status == "future" }) { entry in
                     LineMark(
                         x: .value("Layer", entry.layer),
@@ -279,7 +272,6 @@ struct ComplexityChart: View {
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
                 }
 
-                // Current layer marker
                 if let current = data.first(where: { $0.status == "current" }) {
                     PointMark(
                         x: .value("Layer", current.layer),
@@ -294,7 +286,7 @@ struct ComplexityChart: View {
                 }
             }
             .chartXAxisLabel("Layer", alignment: .center)
-            .chartYAxisLabel("α")
+            .chartYAxisLabel("\u{03B1}")
             .chartXAxis {
                 AxisMarks(values: .automatic(desiredCount: 5)) {
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
@@ -320,10 +312,10 @@ struct ComplexityChart: View {
 
             // Legend
             HStack(spacing: 12) {
-                Text("Low α = simple")
+                Text("Low \u{03B1} = simple")
                     .font(.system(size: 12))
                     .foregroundColor(.green)
-                Text("High α = complex")
+                Text("High \u{03B1} = complex")
                     .font(.system(size: 12))
                     .foregroundColor(.red)
             }

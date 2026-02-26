@@ -4,6 +4,7 @@ struct SettingsView: View {
     @EnvironmentObject var ws: WebSocketService
     @StateObject private var notifPrefs = NotificationPreferences.shared
     @State private var hostInput = ""
+    @AppStorage("appZoomLevel") private var zoomLevel: Double = 1.0
 
     private let accent = Color(hex: "#C9A96E")
     private let dimText = Color(hex: "#888888")
@@ -94,6 +95,24 @@ struct SettingsView: View {
                 Section("Chat Notifications") {
                     Toggle("Claude Finished (background)", isOn: $notifPrefs.claudeFinished)
                         .tint(accent)
+                }
+
+                Section(header: Text("Display"),
+                        footer: Text("Scales the entire app UI. Double-tap slider to reset.")) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("Zoom")
+                            Spacer()
+                            Text("\(Int(zoomLevel * 100))%")
+                                .foregroundColor(accent)
+                                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                        }
+                        Slider(value: $zoomLevel, in: 0.85...1.4, step: 0.05)
+                            .tint(accent)
+                            .onTapGesture(count: 2) {
+                                withAnimation { zoomLevel = 1.0 }
+                            }
+                    }
                 }
 
                 Section("About") {
