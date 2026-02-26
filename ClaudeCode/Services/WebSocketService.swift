@@ -539,20 +539,14 @@ class WebSocketService: ObservableObject {
         lastPongTime = Date()
         pingTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                // JSON-level ping (server responds with pong)
+                // JSON-level ping (server responds with pong, resets lastPongTime).
+                // Protocol-level pings are handled by the server's simple-websocket
+                // ping_interval — URLSessionWebSocketTask responds automatically.
                 self?.sendJSON(["type": "ping"])
-                // Protocol-level WebSocket ping (keeps URLSession alive)
-                self?.webSocket?.sendPing { error in
-                    if error != nil {
-                        Task { @MainActor in
-                            self?.handleDisconnect()
-                        }
-                    }
-                }
-                // Force reconnect if no pong/keepalive received for 45s
+                // Force reconnect if no pong/keepalive received for 60s
                 if let self = self,
                    self.connectionState == .connected,
-                   Date().timeIntervalSince(self.lastPongTime) > 45 {
+                   Date().timeIntervalSince(self.lastPongTime) > 60 {
                     self.handleDisconnect()
                 }
             }
