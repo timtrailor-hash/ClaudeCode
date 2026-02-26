@@ -45,9 +45,9 @@ struct SettingsView: View {
                     .foregroundColor(accent)
                 }
 
-                Section(header: Text("Tool Permissions"),
+                Section(header: Text("Ask Permission Before"),
                         footer: Text(ws.permissionLevel.description)) {
-                    Picker("Approval Level", selection: Binding(
+                    Picker("Prompt For", selection: Binding(
                         get: { ws.permissionLevel },
                         set: { ws.setPermissionLevel($0) }
                     )) {

@@ -20,17 +20,17 @@ enum PermissionLevel: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .approveAll: return "Approve Everything"
-        case .strict: return "Dangerous Only"
-        case .moderate: return "Moderate Risk"
+        case .approveAll: return "No Prompts"
+        case .strict: return "Bash & Web Only"
+        case .moderate: return "Most Actions"
         }
     }
 
     var description: String {
         switch self {
-        case .approveAll: return "All tools run without asking. Fastest but no safety net."
-        case .strict: return "Reads and file edits auto-approved. Only bash commands and web access prompt."
-        case .moderate: return "Reads auto-approved. File writes, bash, and web all prompt."
+        case .approveAll: return "Claude runs everything without asking. Full terminal trust."
+        case .strict: return "Ask before running bash commands or web requests. File operations run freely."
+        case .moderate: return "Ask before file writes, bash, and web. Only reads run freely."
         }
     }
 }
