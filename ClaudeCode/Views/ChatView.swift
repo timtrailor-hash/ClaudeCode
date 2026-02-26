@@ -24,7 +24,7 @@ struct ChatView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Messages
+                // Messages — ignores keyboard so only the input bar moves up
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 8) {
@@ -53,7 +53,7 @@ struct ChatView: View {
                         .padding(.horizontal, 10)
                         .padding(.top, 8)
                     }
-                    .scrollDismissesKeyboard(.interactively)
+                    .scrollDismissesKeyboard(.never)
                     .simultaneousGesture(DragGesture().onChanged { _ in
                         autoScroll = false
                     })
@@ -73,9 +73,6 @@ struct ChatView: View {
                             .padding(.bottom, 8)
                         }
                     }
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        bottomBar
-                    }
                     .onChange(of: ws.messages.last?.content) { _, _ in
                         if autoScroll {
                             proxy.scrollTo("bottom")
@@ -91,6 +88,9 @@ struct ChatView: View {
                         proxy.scrollTo("bottom")
                     }
                 }
+
+                // Bottom bar — outside ScrollView so taps are never intercepted
+                bottomBar
             }
             .background(Color(hex: "#1A1A2E"))
             .navigationTitle("Claude Code")
@@ -157,7 +157,7 @@ struct ChatView: View {
     }
 
     // Bottom bar: working indicator + permission prompt + pending images + input
-    // Uses safeAreaInset so it always stays above the keyboard
+    // Lives outside ScrollView in the VStack so button taps are never intercepted
     @ViewBuilder
     private var bottomBar: some View {
         VStack(spacing: 0) {
@@ -327,31 +327,25 @@ struct ChatView: View {
                     .cornerRadius(20)
                     .foregroundColor(Color(hex: "#E0E0E0"))
                     .focused($inputFocused)
-                    .onSubmit { if canSend { send() } }
 
-                // Show send button if text is typed (queues during generation),
-                // otherwise show stop button during generation
+                // Send or stop — uses onTapGesture instead of Button to
+                // prevent iOS first-responder change from eating the tap
                 if ws.isGenerating && !hasInput {
-                    Button(action: { ws.cancelGeneration() }) {
-                        Image(systemName: "stop.fill")
-                            .font(.system(size: 16, weight: .bold))
-                            .frame(width: 42, height: 42)
-                            .background(Color(hex: "#EE5555"))
-                            .foregroundColor(.white)
-                            .clipShape(Circle())
-                    }
-                    .contentShape(Circle())
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .frame(width: 48, height: 48)
+                        .background(Color(hex: "#EE5555"))
+                        .foregroundColor(.white)
+                        .clipShape(Circle())
+                        .onTapGesture { ws.cancelGeneration() }
                 } else {
-                    Button(action: { send() }) {
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 16, weight: .bold))
-                            .frame(width: 42, height: 42)
-                            .background(canSend ? Color(hex: "#C9A96E") : Color(hex: "#555555"))
-                            .foregroundColor(canSend ? Color(hex: "#1A1A2E") : Color(hex: "#888888"))
-                            .clipShape(Circle())
-                    }
-                    .contentShape(Circle())
-                    .disabled(!canSend)
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 16, weight: .bold))
+                        .frame(width: 48, height: 48)
+                        .background(canSend ? Color(hex: "#C9A96E") : Color(hex: "#555555"))
+                        .foregroundColor(canSend ? Color(hex: "#1A1A2E") : Color(hex: "#888888"))
+                        .clipShape(Circle())
+                        .onTapGesture { if canSend { send() } }
                 }
             }
             .padding(.horizontal, 10)
