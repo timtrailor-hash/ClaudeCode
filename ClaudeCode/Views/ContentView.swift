@@ -42,7 +42,9 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            ZoomedView(zoom: zoomLevel) { ChatView() }
+            // Chat is NOT zoomed — its own ScrollView + keyboard avoidance
+            // breaks when wrapped in ZoomedView's outer ScrollView
+            ChatView()
                 .tabItem {
                     Image(systemName: "bubble.left.and.bubble.right.fill")
                     Text("Chat")

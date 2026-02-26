@@ -49,6 +49,9 @@ class WebSocketService: ObservableObject {
     var pendingPermission: PermissionRequest? { permissionQueue.first }
     @Published var permissionLevel: PermissionLevel = .terminalOnly
 
+    /// Highest event offset seen — used to skip replayed events on reconnect
+    private var lastSeenOffset: Int = -1
+
     enum ConnectionState: String {
         case connected, disconnected, reconnecting
     }
@@ -151,6 +154,7 @@ class WebSocketService: ObservableObject {
         generationStartTime = Date()
         lastActivity = "Connecting..."
         autoContCount = 0
+        lastSeenOffset = -1  // New turn = new event offsets
 
         // If not connected, queue and force reconnect
         if connectionState != .connected {
@@ -177,6 +181,7 @@ class WebSocketService: ObservableObject {
         isGenerating = false
         autoContCount = 0
         permissionQueue.removeAll()
+        lastSeenOffset = -1
     }
 
     // MARK: - Permission responses
@@ -273,6 +278,25 @@ class WebSocketService: ObservableObject {
     private func handleServerMessage(_ text: String) {
         guard let data = text.data(using: .utf8),
               let event = try? JSONDecoder().decode(ServerEvent.self, from: data) else { return }
+
+        // Skip events we've already processed (prevents duplication on reconnect)
+        if let offset = event.offset {
+            if offset <= lastSeenOffset {
+                // Already processed this event — but still process "done" to ensure
+                // we don't miss the end-of-generation signal
+                if event.type == "done" {
+                    if let idx = currentAssistantIndex() {
+                        messages[idx].isStreaming = false
+                    }
+                    isGenerating = false
+                    generationStartTime = nil
+                    lastActivity = ""
+                    permissionQueue.removeAll()
+                }
+                return
+            }
+            lastSeenOffset = offset
+        }
 
         switch event.type {
         case "text":

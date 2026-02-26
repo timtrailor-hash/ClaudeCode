@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import UniformTypeIdentifiers
 
 struct ChatView: View {
     @EnvironmentObject var ws: WebSocketService
@@ -9,6 +10,9 @@ struct ChatView: View {
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var pendingImages: [PendingImage] = []
     @State private var isUploading = false
+    @State private var showCamera = false
+    @State private var showPhotoPicker = false
+    @State private var showFilePicker = false
 
     struct PendingImage: Identifiable {
         let id = UUID()
@@ -52,13 +56,16 @@ struct ChatView: View {
                     .scrollDismissesKeyboard(.immediately)
                     .onChange(of: ws.messages.last?.content) { _, _ in
                         if autoScroll {
-                            withAnimation(.easeOut(duration: 0.15)) {
-                                proxy.scrollTo("bottom", anchor: .bottom)
-                            }
+                            proxy.scrollTo("bottom")
+                        }
+                    }
+                    .onChange(of: ws.messages.count) { _, _ in
+                        if autoScroll {
+                            proxy.scrollTo("bottom")
                         }
                     }
                     .onAppear {
-                        proxy.scrollTo("bottom", anchor: .bottom)
+                        proxy.scrollTo("bottom")
                     }
                 }
 
@@ -193,19 +200,30 @@ struct ChatView: View {
 
                 // Input area
                 HStack(alignment: .bottom, spacing: 6) {
-                    // Attach button
-                    PhotosPicker(
-                        selection: $selectedPhotos,
-                        maxSelectionCount: 5,
-                        matching: .images
-                    ) {
+                    // Attach button — camera, photo library, or file
+                    Menu {
+                        Button {
+                            showCamera = true
+                        } label: {
+                            Label("Take Photo", systemImage: "camera")
+                        }
+
+                        Button {
+                            showPhotoPicker = true
+                        } label: {
+                            Label("Photo Library", systemImage: "photo.on.rectangle")
+                        }
+
+                        Button {
+                            showFilePicker = true
+                        } label: {
+                            Label("Choose File", systemImage: "doc")
+                        }
+                    } label: {
                         Image(systemName: "paperclip")
                             .font(.system(size: 20))
                             .foregroundColor(Color(hex: "#C9A96E"))
                             .frame(width: 36, height: 42)
-                    }
-                    .onChange(of: selectedPhotos) { _, newItems in
-                        Task { await loadSelectedPhotos(newItems) }
                     }
 
                     TextField("Ask anything...", text: $inputText, axis: .vertical)
@@ -217,10 +235,6 @@ struct ChatView: View {
                         .cornerRadius(20)
                         .foregroundColor(Color(hex: "#E0E0E0"))
                         .focused($inputFocused)
-                        .onSubmit {
-                            send()
-                        }
-                        .submitLabel(.send)
 
                     // Show send button if text is typed (queues during generation),
                     // otherwise show stop button during generation
@@ -268,7 +282,6 @@ struct ChatView: View {
                     .font(.system(size: 14, weight: .medium))
                 }
                 ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
                     Button {
                         inputFocused = false
                     } label: {
@@ -276,6 +289,23 @@ struct ChatView: View {
                             .font(.system(size: 16))
                             .foregroundColor(Color(hex: "#C9A96E"))
                     }
+                    Spacer()
+                }
+            }
+            .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhotos, maxSelectionCount: 5, matching: .images)
+            .onChange(of: selectedPhotos) { _, newItems in
+                Task { await loadSelectedPhotos(newItems) }
+            }
+            .fullScreenCover(isPresented: $showCamera) {
+                CameraPicker { image in
+                    addCapturedImage(image)
+                    showCamera = false
+                }
+                .ignoresSafeArea()
+            }
+            .sheet(isPresented: $showFilePicker) {
+                FileImagePicker { data in
+                    addFileData(data)
                 }
             }
         }
@@ -336,6 +366,20 @@ struct ChatView: View {
         }
     }
 
+    private func addCapturedImage(_ image: UIImage) {
+        let thumb = image.preparingThumbnail(of: CGSize(width: 120, height: 120)) ?? image
+        let jpegData = image.jpegData(compressionQuality: 0.8) ?? Data()
+        pendingImages.append(PendingImage(thumbnail: thumb, data: jpegData))
+    }
+
+    private func addFileData(_ data: Data) {
+        if let image = UIImage(data: data) {
+            let thumb = image.preparingThumbnail(of: CGSize(width: 120, height: 120)) ?? image
+            let jpegData = image.jpegData(compressionQuality: 0.8) ?? data
+            pendingImages.append(PendingImage(thumbnail: thumb, data: jpegData))
+        }
+    }
+
     private func uploadImages(_ images: [PendingImage]) async -> [String] {
         var paths: [String] = []
         let baseURL = "http://\(ws.serverHost)/upload"
@@ -363,5 +407,70 @@ struct ChatView: View {
             }
         }
         return paths
+    }
+}
+
+// MARK: - Camera Picker
+
+struct CameraPicker: UIViewControllerRepresentable {
+    let onCapture: (UIImage) -> Void
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: CameraPicker
+        init(parent: CameraPicker) { self.parent = parent }
+
+        func imagePickerController(_ picker: UIImagePickerController,
+                                   didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            if let image = info[.originalImage] as? UIImage {
+                parent.onCapture(image)
+            }
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            picker.dismiss(animated: true)
+        }
+    }
+}
+
+// MARK: - File Picker (images from Files app)
+
+struct FileImagePicker: UIViewControllerRepresentable {
+    let onPick: (Data) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.image])
+        picker.allowsMultipleSelection = false
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let parent: FileImagePicker
+        init(parent: FileImagePicker) { self.parent = parent }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            guard let url = urls.first else { return }
+            guard url.startAccessingSecurityScopedResource() else { return }
+            defer { url.stopAccessingSecurityScopedResource() }
+            if let data = try? Data(contentsOf: url) {
+                parent.onPick(data)
+            }
+        }
     }
 }

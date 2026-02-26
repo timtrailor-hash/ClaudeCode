@@ -31,6 +31,12 @@ class NotificationPreferences: ObservableObject {
     @Published var aiFailureDetection: Bool {
         didSet { UserDefaults.standard.set(aiFailureDetection, forKey: "notify_aiFailure") }
     }
+    @Published var etaMethodChange: Bool {
+        didSet { UserDefaults.standard.set(etaMethodChange, forKey: "notify_etaMethod") }
+    }
+    @Published var connectionAlerts: Bool {
+        didSet { UserDefaults.standard.set(connectionAlerts, forKey: "notify_connection") }
+    }
 
     // AI check frequencies (seconds, 0 = off)
     @Published var bambuAIFrequency: Int {
@@ -65,6 +71,8 @@ class NotificationPreferences: ObservableObject {
         customWatches = d.object(forKey: "notify_customWatches") as? Bool ?? true
         claudeFinished = d.object(forKey: "notify_claudeFinished") as? Bool ?? true
         aiFailureDetection = d.object(forKey: "notify_aiFailure") as? Bool ?? true
+        etaMethodChange = d.object(forKey: "notify_etaMethod") as? Bool ?? true
+        connectionAlerts = d.object(forKey: "notify_connection") as? Bool ?? true
         bambuAIFrequency = d.object(forKey: "ai_freq_bambu") as? Int ?? 300  // Default 5 min
         sv08AIFrequency = d.object(forKey: "ai_freq_sv08") as? Int ?? 300    // Default 5 min
     }
@@ -95,6 +103,10 @@ class NotificationPreferences: ObservableObject {
             return customWatches
         case "failure_detected", "ai_failure_detected":
             return aiFailureDetection
+        case "eta_method_degraded", "eta_method_recovered":
+            return etaMethodChange
+        case "connection_lost", "connection_restored":
+            return connectionAlerts
         default:
             return true
         }

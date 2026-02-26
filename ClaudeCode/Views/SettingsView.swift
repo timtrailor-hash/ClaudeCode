@@ -74,6 +74,10 @@ struct SettingsView: View {
                         .tint(accent)
                     Toggle("AI Failure Detection", isOn: $notifPrefs.aiFailureDetection)
                         .tint(accent)
+                    Toggle("ETA Method Changes", isOn: $notifPrefs.etaMethodChange)
+                        .tint(accent)
+                    Toggle("Connection Lost / Restored", isOn: $notifPrefs.connectionAlerts)
+                        .tint(accent)
                 }
 
                 Section(header: Text("AI Failure Checks"), footer: Text("Bambu uses Claude Haiku (API credits). SV08 uses Obico (free).")) {
