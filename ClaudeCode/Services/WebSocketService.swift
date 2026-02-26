@@ -13,24 +13,27 @@ struct PermissionRequest: Identifiable {
 /// Ordered most permissive → least permissive.
 enum PermissionLevel: String, CaseIterable, Identifiable {
     case approveAll = "approve_all"
-    case strict = "strict"
-    case moderate = "moderate"
+    case terminalOnly = "terminal_only"
+    case terminalAndWeb = "terminal_and_web"
+    case mostActions = "most_actions"
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
         case .approveAll: return "No Prompts"
-        case .strict: return "Bash & Web Only"
-        case .moderate: return "Most Actions"
+        case .terminalOnly: return "Terminal Only"
+        case .terminalAndWeb: return "Terminal & Web"
+        case .mostActions: return "Most Actions"
         }
     }
 
     var description: String {
         switch self {
-        case .approveAll: return "Claude runs everything without asking. Full terminal trust."
-        case .strict: return "Ask before running bash commands or web requests. File operations run freely."
-        case .moderate: return "Ask before file writes, bash, and web. Only reads run freely."
+        case .approveAll: return "Claude runs everything without asking. Full trust."
+        case .terminalOnly: return "Ask before running terminal commands. File operations and web access run freely."
+        case .terminalAndWeb: return "Ask before running terminal commands or accessing the web. File operations run freely."
+        case .mostActions: return "Ask before writing files, running terminal commands, or accessing the web. Only reading files runs freely."
         }
     }
 }
@@ -43,7 +46,7 @@ class WebSocketService: ObservableObject {
     @Published var generationStartTime: Date?
     @Published var lastActivity: String = ""
     @Published var pendingPermission: PermissionRequest?
-    @Published var permissionLevel: PermissionLevel = .strict
+    @Published var permissionLevel: PermissionLevel = .terminalOnly
 
     enum ConnectionState: String {
         case connected, disconnected, reconnecting
