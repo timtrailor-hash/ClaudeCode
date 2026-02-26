@@ -113,7 +113,12 @@ class WebSocketService: ObservableObject {
             return
         }
 
-        session = URLSession(configuration: .default)
+        // Custom config with long timeout — default 60s kills WebSocket
+        // connections during silent periods (tool execution, thinking).
+        // Server sends keepalives every 15s, so 300s is very generous.
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 300
+        session = URLSession(configuration: config)
         webSocket = session?.webSocketTask(with: url)
         webSocket?.resume()
 
@@ -369,6 +374,11 @@ class WebSocketService: ObservableObject {
             // Server confirmed the new permission level
             break
 
+        case "keepalive":
+            // Server-sent keepalive to prevent URLSession idle timeout
+            lastPongTime = Date()
+            return
+
         case "image":
             if let urlPath = event.content, let idx = currentAssistantIndex() {
                 let fullURL = "http://\(serverHost)\(urlPath)"
@@ -525,13 +535,22 @@ class WebSocketService: ObservableObject {
     private func startPingTimer() {
         pingTimer?.invalidate()
         lastPongTime = Date()
-        pingTimer = Timer.scheduledTimer(withTimeInterval: 25, repeats: true) { [weak self] _ in
+        pingTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             Task { @MainActor in
+                // JSON-level ping (server responds with pong)
                 self?.sendJSON(["type": "ping"])
-                // Force reconnect if no pong received for 2x the ping interval
+                // Protocol-level WebSocket ping (keeps URLSession alive)
+                self?.webSocket?.sendPing { error in
+                    if error != nil {
+                        Task { @MainActor in
+                            self?.handleDisconnect()
+                        }
+                    }
+                }
+                // Force reconnect if no pong/keepalive received for 45s
                 if let self = self,
                    self.connectionState == .connected,
-                   Date().timeIntervalSince(self.lastPongTime) > 50 {
+                   Date().timeIntervalSince(self.lastPongTime) > 45 {
                     self.handleDisconnect()
                 }
             }
