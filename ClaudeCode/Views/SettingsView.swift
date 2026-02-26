@@ -45,6 +45,19 @@ struct SettingsView: View {
                     .foregroundColor(accent)
                 }
 
+                Section(header: Text("Tool Permissions"),
+                        footer: Text(ws.permissionLevel.description)) {
+                    Picker("Approval Level", selection: Binding(
+                        get: { ws.permissionLevel },
+                        set: { ws.setPermissionLevel($0) }
+                    )) {
+                        ForEach(PermissionLevel.allCases) { level in
+                            Text(level.label).tag(level)
+                        }
+                    }
+                    .tint(accent)
+                }
+
                 Section("Printer Notifications") {
                     Toggle("Print Complete", isOn: $notifPrefs.printComplete)
                         .tint(accent)

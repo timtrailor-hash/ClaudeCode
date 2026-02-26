@@ -1,6 +1,40 @@
 import Foundation
 import Combine
 
+/// Represents a pending permission request from Claude
+struct PermissionRequest: Identifiable {
+    let id: String          // request_id from server
+    let toolName: String    // e.g. "Bash", "Write", "Edit"
+    let summary: String     // Human-readable description
+    let timestamp: Date
+}
+
+/// Controls which tool operations require user approval.
+/// Ordered most permissive → least permissive.
+enum PermissionLevel: String, CaseIterable, Identifiable {
+    case approveAll = "approve_all"
+    case strict = "strict"
+    case moderate = "moderate"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .approveAll: return "Approve Everything"
+        case .strict: return "Dangerous Only"
+        case .moderate: return "Moderate Risk"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .approveAll: return "All tools run without asking. Fastest but no safety net."
+        case .strict: return "Reads and file edits auto-approved. Only bash commands and web access prompt."
+        case .moderate: return "Reads auto-approved. File writes, bash, and web all prompt."
+        }
+    }
+}
+
 @MainActor
 class WebSocketService: ObservableObject {
     @Published var messages: [ChatMessage] = []
@@ -8,6 +42,8 @@ class WebSocketService: ObservableObject {
     @Published var isGenerating: Bool = false
     @Published var generationStartTime: Date?
     @Published var lastActivity: String = ""
+    @Published var pendingPermission: PermissionRequest?
+    @Published var permissionLevel: PermissionLevel = .strict
 
     enum ConnectionState: String {
         case connected, disconnected, reconnecting
@@ -15,7 +51,7 @@ class WebSocketService: ObservableObject {
 
     // Server config — stored in UserDefaults
     var serverHost: String {
-        get { UserDefaults.standard.string(forKey: "serverHost") ?? "localhost:8081" }
+        get { UserDefaults.standard.string(forKey: "serverHost") ?? "100.112.125.42:8081" }
         set {
             UserDefaults.standard.set(newValue, forKey: "serverHost")
             reconnect()
@@ -32,7 +68,21 @@ class WebSocketService: ObservableObject {
     private var pendingMessage: (text: String, imagePaths: [String])?
 
     init() {
+        // Restore saved permission level
+        if let saved = UserDefaults.standard.string(forKey: "permissionLevel"),
+           let level = PermissionLevel(rawValue: saved) {
+            permissionLevel = level
+        }
         connect()
+    }
+
+    func setPermissionLevel(_ level: PermissionLevel) {
+        permissionLevel = level
+        UserDefaults.standard.set(level.rawValue, forKey: "permissionLevel")
+        sendJSON([
+            "type": "set_permission_level",
+            "level": level.rawValue
+        ])
     }
 
     func connect() {
@@ -122,6 +172,30 @@ class WebSocketService: ObservableObject {
         messages.removeAll()
         isGenerating = false
         autoContCount = 0
+        pendingPermission = nil
+    }
+
+    // MARK: - Permission responses
+
+    func allowPermission(_ requestId: String) {
+        sendJSON([
+            "type": "permission_response",
+            "request_id": requestId,
+            "allow": true
+        ])
+        pendingPermission = nil
+        lastActivity = "Permission granted, running..."
+    }
+
+    func denyPermission(_ requestId: String) {
+        sendJSON([
+            "type": "permission_response",
+            "request_id": requestId,
+            "allow": false,
+            "message": "User denied permission"
+        ])
+        pendingPermission = nil
+        lastActivity = "Permission denied"
     }
 
     // MARK: - Private
@@ -151,6 +225,13 @@ class WebSocketService: ObservableObject {
                     if self?.connectionState != .connected {
                         self?.connectionState = .connected
                         self?.reconnectDelay = 1.0
+                        // Sync permission level on connect
+                        if let level = self?.permissionLevel {
+                            self?.sendJSON([
+                                "type": "set_permission_level",
+                                "level": level.rawValue
+                            ])
+                        }
                         // Send any pending message that was queued while disconnected
                         if let pending = self?.pendingMessage {
                             self?.pendingMessage = nil
@@ -202,9 +283,30 @@ class WebSocketService: ObservableObject {
                 case "tool_result": lastActivity = "Processing tool result..."
                 case "processing": lastActivity = "Processing..."
                 case "rate_limited": lastActivity = "Rate limited, waiting..."
+                case "requesting_permission": lastActivity = "Waiting for permission..."
                 default: lastActivity = content.capitalized + "..."
                 }
             }
+
+        case "permission_request":
+            // Claude wants to use a tool and needs user approval
+            if let requestId = event.requestId {
+                pendingPermission = PermissionRequest(
+                    id: requestId,
+                    toolName: event.toolName ?? "Unknown",
+                    summary: event.summary ?? "Use a tool",
+                    timestamp: Date()
+                )
+                lastActivity = "Waiting for your permission..."
+            }
+
+        case "permission_acknowledged":
+            // Server confirmed it received our permission response
+            break
+
+        case "permission_level_set":
+            // Server confirmed the new permission level
+            break
 
         case "image":
             if let urlPath = event.content, let idx = currentAssistantIndex() {
@@ -224,6 +326,7 @@ class WebSocketService: ObservableObject {
             isGenerating = false
             generationStartTime = nil
             lastActivity = ""
+            pendingPermission = nil
 
             // Auto-continue on truncation
             if event.truncated == true && autoContCount < maxAutoContinue {
@@ -271,6 +374,7 @@ class WebSocketService: ObservableObject {
             isGenerating = false
             generationStartTime = nil
             lastActivity = ""
+            pendingPermission = nil
 
         case "new_session_ok":
             break

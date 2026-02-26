@@ -11,7 +11,7 @@ struct GovernorsView: View {
 
     private var governorsURL: URL? {
         let parts = ws.serverHost.split(separator: ":")
-        let ip = parts.first ?? "localhost"
+        let ip = parts.first ?? "100.112.125.42"
         return URL(string: "http://\(ip):8080/governors/")
     }
 
@@ -75,7 +75,7 @@ struct GovernorsView: View {
 
     private func resetChat() {
         let parts = ws.serverHost.split(separator: ":")
-        let ip = parts.first ?? "localhost"
+        let ip = parts.first ?? "100.112.125.42"
         guard let url = URL(string: "http://\(ip):8081/governors-reset") else { return }
 
         var request = URLRequest(url: url)

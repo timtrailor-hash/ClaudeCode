@@ -99,6 +99,58 @@ struct ChatView: View {
                     .background(Color(hex: "#1A2A1A"))
                 }
 
+                // Permission prompt — Claude needs user approval to use a tool
+                if let perm = ws.pendingPermission {
+                    VStack(spacing: 8) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "lock.shield")
+                                .font(.system(size: 14))
+                                .foregroundColor(Color(hex: "#C9A96E"))
+                            Text("Permission Required")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(Color(hex: "#C9A96E"))
+                        }
+
+                        Text(perm.summary)
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(Color(hex: "#E0E0E0"))
+                            .lineLimit(3)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        HStack(spacing: 12) {
+                            Button {
+                                ws.denyPermission(perm.id)
+                            } label: {
+                                Text("Deny")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(Color(hex: "#EE5555"))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .background(Color(hex: "#3A1A1A"))
+                                    .cornerRadius(8)
+                            }
+
+                            Button {
+                                ws.allowPermission(perm.id)
+                            } label: {
+                                Text("Allow")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(Color(hex: "#1A1A2E"))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .background(Color(hex: "#C9A96E"))
+                                    .cornerRadius(8)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(Color(hex: "#1A2A3A"))
+                    .cornerRadius(12)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                }
+
                 // Pending image thumbnails
                 if !pendingImages.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -161,21 +213,28 @@ struct ChatView: View {
                         }
                         .submitLabel(.send)
 
-                    Button(action: {
-                        if ws.isGenerating {
-                            ws.cancelGeneration()
-                        } else {
-                            send()
+                    // Show send button if text is typed (queues during generation),
+                    // otherwise show stop button during generation
+                    if ws.isGenerating && !hasInput {
+                        Button(action: { ws.cancelGeneration() }) {
+                            Image(systemName: "stop.fill")
+                                .font(.system(size: 16, weight: .bold))
+                                .frame(width: 42, height: 42)
+                                .background(Color(hex: "#EE5555"))
+                                .foregroundColor(.white)
+                                .clipShape(Circle())
                         }
-                    }) {
-                        Image(systemName: ws.isGenerating ? "stop.fill" : "arrow.up")
-                            .font(.system(size: 16, weight: .bold))
-                            .frame(width: 42, height: 42)
-                            .background(ws.isGenerating ? Color(hex: "#EE5555") : Color(hex: "#C9A96E"))
-                            .foregroundColor(ws.isGenerating ? .white : Color(hex: "#1A1A2E"))
-                            .clipShape(Circle())
+                    } else {
+                        Button(action: { send() }) {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 16, weight: .bold))
+                                .frame(width: 42, height: 42)
+                                .background(canSend ? Color(hex: "#C9A96E") : Color(hex: "#555555"))
+                                .foregroundColor(canSend ? Color(hex: "#1A1A2E") : Color(hex: "#888888"))
+                                .clipShape(Circle())
+                        }
+                        .disabled(!canSend)
                     }
-                    .disabled(!canSend && !ws.isGenerating)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 8)
@@ -201,11 +260,13 @@ struct ChatView: View {
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
-                    Button("Done") {
+                    Button {
                         inputFocused = false
+                    } label: {
+                        Image(systemName: "keyboard.chevron.compact.down")
+                            .font(.system(size: 16))
+                            .foregroundColor(Color(hex: "#C9A96E"))
                     }
-                    .foregroundColor(Color(hex: "#C9A96E"))
-                    .font(.system(size: 15, weight: .medium))
                 }
             }
         }
@@ -213,6 +274,10 @@ struct ChatView: View {
 
     private var canSend: Bool {
         !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !pendingImages.isEmpty
+    }
+
+    private var hasInput: Bool {
+        !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var statusColor: Color {
