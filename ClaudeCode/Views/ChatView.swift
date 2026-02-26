@@ -109,6 +109,15 @@ struct ChatView: View {
                             Text("Permission Required")
                                 .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(Color(hex: "#C9A96E"))
+                            if ws.permissionQueue.count > 1 {
+                                Text("+\(ws.permissionQueue.count - 1)")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(Color(hex: "#1A1A2E"))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color(hex: "#C9A96E"))
+                                    .cornerRadius(8)
+                            }
                         }
 
                         Text(perm.summary)

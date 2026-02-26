@@ -115,6 +115,8 @@ struct SettingsView: View {
                     }
                 }
 
+                SystemHealthSection(serverHost: ws.serverHost)
+
                 Section("About") {
                     HStack {
                         Text("Version")

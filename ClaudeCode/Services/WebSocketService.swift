@@ -45,7 +45,8 @@ class WebSocketService: ObservableObject {
     @Published var isGenerating: Bool = false
     @Published var generationStartTime: Date?
     @Published var lastActivity: String = ""
-    @Published var pendingPermission: PermissionRequest?
+    @Published var permissionQueue: [PermissionRequest] = []
+    var pendingPermission: PermissionRequest? { permissionQueue.first }
     @Published var permissionLevel: PermissionLevel = .terminalOnly
 
     enum ConnectionState: String {
@@ -175,7 +176,7 @@ class WebSocketService: ObservableObject {
         messages.removeAll()
         isGenerating = false
         autoContCount = 0
-        pendingPermission = nil
+        permissionQueue.removeAll()
     }
 
     // MARK: - Permission responses
@@ -186,8 +187,10 @@ class WebSocketService: ObservableObject {
             "request_id": requestId,
             "allow": true
         ])
-        pendingPermission = nil
-        lastActivity = "Permission granted, running..."
+        permissionQueue.removeAll { $0.id == requestId }
+        lastActivity = permissionQueue.isEmpty
+            ? "Permission granted, running..."
+            : "Waiting for your permission..."
     }
 
     func denyPermission(_ requestId: String) {
@@ -197,8 +200,10 @@ class WebSocketService: ObservableObject {
             "allow": false,
             "message": "User denied permission"
         ])
-        pendingPermission = nil
-        lastActivity = "Permission denied"
+        permissionQueue.removeAll { $0.id == requestId }
+        lastActivity = permissionQueue.isEmpty
+            ? "Permission denied"
+            : "Waiting for your permission..."
     }
 
     // MARK: - Private
@@ -294,12 +299,16 @@ class WebSocketService: ObservableObject {
         case "permission_request":
             // Claude wants to use a tool and needs user approval
             if let requestId = event.requestId {
-                pendingPermission = PermissionRequest(
+                let req = PermissionRequest(
                     id: requestId,
                     toolName: event.toolName ?? "Unknown",
                     summary: event.summary ?? "Use a tool",
                     timestamp: Date()
                 )
+                // Queue instead of overwrite — multiple tools may need approval
+                if !permissionQueue.contains(where: { $0.id == requestId }) {
+                    permissionQueue.append(req)
+                }
                 lastActivity = "Waiting for your permission..."
             }
 
@@ -329,7 +338,7 @@ class WebSocketService: ObservableObject {
             isGenerating = false
             generationStartTime = nil
             lastActivity = ""
-            pendingPermission = nil
+            permissionQueue.removeAll()
 
             // Auto-continue on truncation
             if event.truncated == true && autoContCount < maxAutoContinue {
@@ -363,7 +372,15 @@ class WebSocketService: ObservableObject {
             break
 
         case "ws_error":
-            let errorMsg = ChatMessage(role: .system, content: "Error: \(event.content ?? "Unknown")")
+            let content = event.content ?? "Unknown"
+            // Stale permission responses are harmless — just clean up quietly
+            if content.contains("Unknown permission request") {
+                // Request already handled/expired on server, remove from local queue
+                let staleId = content.components(separatedBy: ": ").last ?? ""
+                permissionQueue.removeAll { $0.id == staleId }
+                break
+            }
+            let errorMsg = ChatMessage(role: .system, content: "Error: \(content)")
             messages.append(errorMsg)
             isGenerating = false
             generationStartTime = nil
@@ -377,7 +394,7 @@ class WebSocketService: ObservableObject {
             isGenerating = false
             generationStartTime = nil
             lastActivity = ""
-            pendingPermission = nil
+            permissionQueue.removeAll()
 
         case "new_session_ok":
             break
