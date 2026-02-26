@@ -54,6 +54,25 @@ struct ChatView: View {
                         .padding(.top, 8)
                     }
                     .scrollDismissesKeyboard(.immediately)
+                    .simultaneousGesture(DragGesture().onChanged { _ in
+                        autoScroll = false
+                    })
+                    .overlay(alignment: .bottomTrailing) {
+                        if !autoScroll {
+                            Button {
+                                autoScroll = true
+                                proxy.scrollTo("bottom", anchor: .bottom)
+                            } label: {
+                                Image(systemName: "arrow.down.circle.fill")
+                                    .font(.system(size: 32))
+                                    .foregroundColor(Color(hex: "#C9A96E"))
+                                    .background(Circle().fill(Color(hex: "#1A1A2E")))
+                                    .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+                            }
+                            .padding(.trailing, 12)
+                            .padding(.bottom, 8)
+                        }
+                    }
                     .onChange(of: ws.messages.last?.content) { _, _ in
                         if autoScroll {
                             proxy.scrollTo("bottom")
@@ -61,6 +80,7 @@ struct ChatView: View {
                     }
                     .onChange(of: ws.messages.count) { _, _ in
                         if autoScroll {
+                            autoScroll = true
                             proxy.scrollTo("bottom")
                         }
                     }

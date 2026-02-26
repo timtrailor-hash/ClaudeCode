@@ -68,11 +68,15 @@ class WebSocketService: ObservableObject {
     private var webSocket: URLSessionWebSocketTask?
     private var session: URLSession?
     private var pingTimer: Timer?
+    private var watchdogTimer: Timer?
     private var reconnectDelay: TimeInterval = 1.0
     private var autoContCount = 0
     private let maxAutoContinue = 3
     private var messageQueue: [String] = []
     private var pendingMessage: (text: String, imagePaths: [String])?
+    private var reconnectTask: Task<Void, Never>?
+    private var lastPongTime: Date = Date()
+    private var lastEventTime: Date?
 
     init() {
         // Restore saved permission level
@@ -114,8 +118,12 @@ class WebSocketService: ObservableObject {
     }
 
     func disconnect() {
+        reconnectTask?.cancel()
+        reconnectTask = nil
         pingTimer?.invalidate()
         pingTimer = nil
+        watchdogTimer?.invalidate()
+        watchdogTimer = nil
         webSocket?.cancel(with: .goingAway, reason: nil)
         webSocket = nil
         session?.invalidateAndCancel()
@@ -124,15 +132,18 @@ class WebSocketService: ObservableObject {
 
     func reconnect() {
         connectionState = .reconnecting
-        Task { @MainActor in
+        reconnectTask?.cancel()
+        reconnectTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: UInt64(reconnectDelay * 1_000_000_000))
+            guard !Task.isCancelled else { return }
             connect()
         }
-        reconnectDelay = min(reconnectDelay * 2, 5)  // Cap at 5s (not 30)
+        reconnectDelay = min(reconnectDelay * 2, 30)
     }
 
     /// Force immediate reconnect (e.g., when app returns to foreground)
     func forceReconnect() {
+        reconnectTask?.cancel()
         reconnectDelay = 1.0
         connect()
     }
@@ -154,7 +165,11 @@ class WebSocketService: ObservableObject {
         generationStartTime = Date()
         lastActivity = "Connecting..."
         autoContCount = 0
-        lastSeenOffset = -1  // New turn = new event offsets
+
+        // Prune old messages to prevent unbounded memory growth
+        if messages.count > 500 {
+            messages.removeFirst(messages.count - 400)
+        }
 
         // If not connected, queue and force reconnect
         if connectionState != .connected {
@@ -279,6 +294,8 @@ class WebSocketService: ObservableObject {
         guard let data = text.data(using: .utf8),
               let event = try? JSONDecoder().decode(ServerEvent.self, from: data) else { return }
 
+        lastEventTime = Date()
+
         // Skip events we've already processed (prevents duplication on reconnect)
         if let offset = event.offset {
             if offset <= lastSeenOffset {
@@ -362,7 +379,11 @@ class WebSocketService: ObservableObject {
             isGenerating = false
             generationStartTime = nil
             lastActivity = ""
-            permissionQueue.removeAll()
+
+            // Only clear permissions if we're truly done (not auto-continuing)
+            if !(event.truncated == true && autoContCount < maxAutoContinue) {
+                permissionQueue.removeAll()
+            }
 
             // Auto-continue on truncation
             if event.truncated == true && autoContCount < maxAutoContinue {
@@ -424,6 +445,7 @@ class WebSocketService: ObservableObject {
             break
 
         case "pong":
+            lastPongTime = Date()
             break
 
         case "push_message":
@@ -494,9 +516,39 @@ class WebSocketService: ObservableObject {
 
     private func startPingTimer() {
         pingTimer?.invalidate()
+        lastPongTime = Date()
         pingTimer = Timer.scheduledTimer(withTimeInterval: 25, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.sendJSON(["type": "ping"])
+                // Force reconnect if no pong received for 2x the ping interval
+                if let self = self,
+                   self.connectionState == .connected,
+                   Date().timeIntervalSince(self.lastPongTime) > 50 {
+                    self.handleDisconnect()
+                }
+            }
+        }
+
+        // Watchdog: auto-reset isGenerating if no events for 60 seconds
+        watchdogTimer?.invalidate()
+        watchdogTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self else { return }
+                if self.isGenerating,
+                   let lastEvent = self.lastEventTime,
+                   Date().timeIntervalSince(lastEvent) > 60 {
+                    // Auto-reset stale generation state
+                    if let idx = self.currentAssistantIndex() {
+                        self.messages[idx].isStreaming = false
+                    }
+                    self.isGenerating = false
+                    self.generationStartTime = nil
+                    self.lastActivity = ""
+                    self.messages.append(ChatMessage(
+                        role: .system,
+                        content: "Connection to Claude lost. Your message may need to be resent."
+                    ))
+                }
             }
         }
     }

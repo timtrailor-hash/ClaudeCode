@@ -210,6 +210,7 @@ struct SystemHealthSection: View {
 
     /// Post a local notification if backup is >48h old
     private func checkBackupStaleness(items: [HealthItem]) {
+        guard UIApplication.shared.applicationState != .active else { return }
         for item in items where item.name == "Google Drive Backup" {
             guard let ts = item.timestamp, let date = parseISO(ts) else {
                 // No backup at all — alert
@@ -226,6 +227,7 @@ struct SystemHealthSection: View {
 
     /// Post a local notification if any repo has >1 uncommitted changes
     private func checkUncommittedCode(items: [HealthItem]) {
+        guard UIApplication.shared.applicationState != .active else { return }
         let dirtyRepos = items.filter {
             $0.name.hasPrefix("GitHub:") && ($0.uncommittedCount ?? 0) > 1
         }
