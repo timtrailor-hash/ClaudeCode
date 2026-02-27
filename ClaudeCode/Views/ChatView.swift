@@ -337,6 +337,7 @@ struct ChatView: View {
                         .background(Color(hex: "#EE5555"))
                         .foregroundColor(.white)
                         .clipShape(Circle())
+                        .contentShape(Circle())
                         .onTapGesture { ws.cancelGeneration() }
                 } else {
                     Image(systemName: "arrow.up")
@@ -345,6 +346,7 @@ struct ChatView: View {
                         .background(canSend ? Color(hex: "#C9A96E") : Color(hex: "#555555"))
                         .foregroundColor(canSend ? Color(hex: "#1A1A2E") : Color(hex: "#888888"))
                         .clipShape(Circle())
+                        .contentShape(Circle())
                         .onTapGesture { if canSend { send() } }
                 }
             }
