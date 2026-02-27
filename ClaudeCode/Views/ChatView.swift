@@ -54,6 +54,7 @@ struct ChatView: View {
                         .padding(.top, 8)
                     }
                     .scrollDismissesKeyboard(.never)
+                    .ignoresSafeArea(.keyboard)
                     .simultaneousGesture(DragGesture().onChanged { _ in
                         autoScroll = false
                     })
