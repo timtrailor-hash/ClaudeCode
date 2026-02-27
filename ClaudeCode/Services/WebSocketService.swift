@@ -383,7 +383,8 @@ class WebSocketService: ObservableObject {
 
         case "image":
             if let urlPath = event.content, let idx = currentAssistantIndex() {
-                let fullURL = "http://\(serverHost)\(urlPath)"
+                let separator = urlPath.contains("?") ? "&" : "?"
+                let fullURL = "http://\(serverHost)\(urlPath)\(separator)token=\(authToken)"
                 messages[idx].imageURLs.append(fullURL)
             }
 
