@@ -7,6 +7,13 @@ struct SettingsView: View {
     @State private var tokenInput = ""
     @AppStorage("appZoomLevel") private var zoomLevel: Double = 1.0
 
+    // Terminal auth state
+    @State private var showAuthSheet = false
+    @State private var authURL: URL?
+    @State private var authInProgress = false
+    @State private var authStatusMessage: String?
+    @State private var authStatusIsError = false
+
     private let accent = Color(hex: "#C9A96E")
     private let dimText = Color(hex: "#888888")
     private let cardBg = Color(hex: "#16213E")
@@ -133,6 +140,37 @@ struct SettingsView: View {
                     }
                 }
 
+                Section(header: Text("Terminal Authentication"),
+                        footer: Text("Authenticate the Terminal tab with your Claude account via OAuth.")) {
+                    if let msg = authStatusMessage {
+                        HStack {
+                            Image(systemName: authStatusIsError ? "xmark.circle" : "checkmark.circle")
+                                .foregroundColor(authStatusIsError ? .red : .green)
+                            Text(msg)
+                                .font(.system(size: 13))
+                                .foregroundColor(authStatusIsError ? .red : .green)
+                        }
+                    }
+
+                    Button {
+                        startAuth()
+                    } label: {
+                        HStack {
+                            if authInProgress {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                    .padding(.trailing, 4)
+                                Text("Authenticating...")
+                            } else {
+                                Image(systemName: "person.badge.key")
+                                Text("Authenticate Terminal")
+                            }
+                        }
+                    }
+                    .foregroundColor(accent)
+                    .disabled(authInProgress)
+                }
+
                 SystemHealthSection(serverHost: ws.serverHost)
 
                 Section("About") {
@@ -161,6 +199,21 @@ struct SettingsView: View {
             hostInput = ws.serverHost
             tokenInput = ws.authToken
         }
+        .sheet(isPresented: $showAuthSheet) {
+            if let url = authURL {
+                TerminalAuthSheet(
+                    url: url,
+                    onCode: { code in
+                        showAuthSheet = false
+                        completeAuth(code: code)
+                    },
+                    onCancel: {
+                        showAuthSheet = false
+                        authInProgress = false
+                    }
+                )
+            }
+        }
     }
 
     private var statusColor: Color {
@@ -168,6 +221,105 @@ struct SettingsView: View {
         case .connected: return .green
         case .disconnected: return .red
         case .reconnecting: return .yellow
+        }
+    }
+
+    // MARK: - Terminal Auth
+
+    private var serverBaseURL: String {
+        let parts = ws.serverHost.split(separator: ":")
+        let ip = parts.first ?? "100.126.253.40"
+        return "http://\(ip):8081"
+    }
+
+    private func startAuth() {
+        authInProgress = true
+        authStatusMessage = nil
+
+        guard let url = URL(string: "\(serverBaseURL)/terminal-auth-start") else {
+            authStatusMessage = "Invalid server URL"
+            authStatusIsError = true
+            authInProgress = false
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        let token = UserDefaults.standard.string(forKey: "authToken") ?? ""
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        Task {
+            do {
+                let (data, _) = try await URLSession.shared.data(for: request)
+                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+
+                if let oauthURLString = json["url"] as? String,
+                   let oauthURL = URL(string: oauthURLString) {
+                    await MainActor.run {
+                        authURL = oauthURL
+                        showAuthSheet = true
+                    }
+                } else {
+                    let error = json["error"] as? String ?? "Unknown error"
+                    await MainActor.run {
+                        authStatusMessage = error
+                        authStatusIsError = true
+                        authInProgress = false
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    authStatusMessage = "Request failed: \(error.localizedDescription)"
+                    authStatusIsError = true
+                    authInProgress = false
+                }
+            }
+        }
+    }
+
+    private func completeAuth(code: String) {
+        guard let url = URL(string: "\(serverBaseURL)/terminal-auth-complete") else {
+            authStatusMessage = "Invalid server URL"
+            authStatusIsError = true
+            authInProgress = false
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let token = UserDefaults.standard.string(forKey: "authToken") ?? ""
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["code": code])
+
+        Task {
+            do {
+                let (data, _) = try await URLSession.shared.data(for: request)
+                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+                let ok = json["ok"] as? Bool ?? false
+                let status = json["status"] as? String ?? ""
+
+                await MainActor.run {
+                    authInProgress = false
+                    if ok {
+                        authStatusMessage = "Logged in: \(status)"
+                        authStatusIsError = false
+                    } else {
+                        authStatusMessage = "Auth failed: \(json["error"] as? String ?? status)"
+                        authStatusIsError = true
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    authStatusMessage = "Request failed: \(error.localizedDescription)"
+                    authStatusIsError = true
+                    authInProgress = false
+                }
+            }
         }
     }
 }

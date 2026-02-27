@@ -144,9 +144,9 @@ struct TerminalWebViewWrapper: UIViewRepresentable {
         wv.isOpaque = false
         wv.backgroundColor = UIColor.black
         wv.scrollView.backgroundColor = UIColor.black
-        // Critical: disable bounce so touch events go to xterm.js, not iOS
+        // Disable bounce but keep scroll enabled — xterm.js handles its own scrollback
         wv.scrollView.bounces = false
-        wv.scrollView.isScrollEnabled = false
+        wv.scrollView.isScrollEnabled = true
         wv.load(URLRequest(url: url))
 
         DispatchQueue.main.async {
