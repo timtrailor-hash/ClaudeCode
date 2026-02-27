@@ -19,11 +19,48 @@ struct HealthResponse: Decodable {
     let items: [HealthItem]
 }
 
+/// Extended health response from /health endpoint
+struct ExtendedHealthResponse: Decodable {
+    let ok: Bool
+    let pid: Int
+    let uptimeS: Int
+    let claudeAuthStatus: String
+    let threadHealth: [String: String]
+    let wsReconnectCount5min: Int
+    let workCacheAgeSeconds: Int?
+    let lastClaudeError: String
+    let ttydOk: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case ok, pid
+        case uptimeS = "uptime_s"
+        case claudeAuthStatus = "claude_auth_status"
+        case threadHealth = "thread_health"
+        case wsReconnectCount5min = "ws_reconnect_count_5min"
+        case workCacheAgeSeconds = "work_cache_age_seconds"
+        case lastClaudeError = "last_claude_error"
+        case ttydOk = "ttyd_ok"
+    }
+}
+
+/// A service check rendered in the new Service Health section
+struct ServiceCheck: Identifiable {
+    let id = UUID()
+    let name: String
+    let status: CheckStatus
+    let detail: String
+
+    enum CheckStatus {
+        case green, amber, red
+    }
+}
+
 /// Color-coded system health dashboard shown in Settings
 struct SystemHealthSection: View {
     let serverHost: String
 
     @State private var items: [HealthItem] = []
+    @State private var serviceChecks: [ServiceCheck] = []
     @State private var lastFetched: Date?
     @State private var isLoading = false
 
@@ -31,23 +68,50 @@ struct SystemHealthSection: View {
     private let dimText = Color(hex: "#888888")
 
     var body: some View {
+        // Service Health section (from /health endpoint)
         Section(header: HStack {
-            Text("System Health")
+            Text("Service Health")
             Spacer()
             if isLoading {
                 ProgressView()
                     .scaleEffect(0.7)
             } else {
-                Button(action: fetchHealth) {
+                Button(action: fetchAll) {
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 12))
                         .foregroundColor(accent)
                 }
                 .buttonStyle(.plain)
             }
-        }, footer: footerText) {
+        }) {
+            if serviceChecks.isEmpty && !isLoading {
+                Text("Tap refresh to check services")
+                    .foregroundColor(dimText)
+                    .font(.system(size: 13))
+            }
+            ForEach(serviceChecks) { check in
+                HStack(spacing: 10) {
+                    Circle()
+                        .fill(checkColor(check.status))
+                        .frame(width: 10, height: 10)
+
+                    Text(check.name)
+                        .font(.system(size: 14, weight: .medium))
+
+                    Spacer()
+
+                    Text(check.detail)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(checkColor(check.status))
+                }
+                .padding(.vertical, 2)
+            }
+        }
+
+        // Existing system-health section (backups, repos, etc.)
+        Section(header: Text("Data Health"), footer: footerText) {
             if items.isEmpty && !isLoading {
-                Text("Tap refresh to check system health")
+                Text("Tap refresh above to check")
                     .foregroundColor(dimText)
                     .font(.system(size: 13))
             }
@@ -83,7 +147,7 @@ struct SystemHealthSection: View {
                 .padding(.vertical, 2)
             }
         }
-        .onAppear { fetchHealth() }
+        .onAppear { fetchAll() }
     }
 
     private var footerText: some View {
@@ -93,6 +157,14 @@ struct SystemHealthSection: View {
             } else {
                 Text("Green < 24h · Amber 1-3 days · Red > 3 days")
             }
+        }
+    }
+
+    private func checkColor(_ status: ServiceCheck.CheckStatus) -> Color {
+        switch status {
+        case .green: return .green
+        case .amber: return Color.orange
+        case .red: return .red
         }
     }
 
@@ -184,9 +256,14 @@ struct SystemHealthSection: View {
 
     // MARK: - Fetch
 
+    private func fetchAll() {
+        isLoading = true
+        fetchHealth()
+        fetchExtendedHealth()
+    }
+
     private func fetchHealth() {
         guard let url = URL(string: "http://\(serverHost)/system-health") else { return }
-        isLoading = true
 
         var request = URLRequest(url: url)
         let token = UserDefaults.standard.string(forKey: "authToken") ?? ""
@@ -196,9 +273,6 @@ struct SystemHealthSection: View {
 
         URLSession.shared.dataTask(with: request) { data, _, error in
             DispatchQueue.main.async {
-                isLoading = false
-                lastFetched = Date()
-
                 guard let data = data, error == nil,
                       let response = try? JSONDecoder().decode(HealthResponse.self, from: data) else {
                     return
@@ -212,6 +286,106 @@ struct SystemHealthSection: View {
                 checkUncommittedCode(items: response.items)
             }
         }.resume()
+    }
+
+    private func fetchExtendedHealth() {
+        guard let url = URL(string: "http://\(serverHost)/health") else { return }
+
+        var request = URLRequest(url: url)
+        let token = UserDefaults.standard.string(forKey: "authToken") ?? ""
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        URLSession.shared.dataTask(with: request) { data, _, error in
+            DispatchQueue.main.async {
+                isLoading = false
+                lastFetched = Date()
+
+                guard let data = data, error == nil,
+                      let resp = try? JSONDecoder().decode(ExtendedHealthResponse.self, from: data) else {
+                    serviceChecks = [
+                        ServiceCheck(name: "Server", status: .red, detail: "Unreachable")
+                    ]
+                    return
+                }
+
+                var checks: [ServiceCheck] = []
+
+                // Server uptime
+                let uptimeStr = formatUptime(resp.uptimeS)
+                checks.append(ServiceCheck(
+                    name: "Server Uptime",
+                    status: .green,
+                    detail: uptimeStr
+                ))
+
+                // Claude CLI Auth
+                let authStatus: ServiceCheck.CheckStatus = resp.claudeAuthStatus == "logged_in" ? .green :
+                    resp.claudeAuthStatus == "idle" ? .green : .red
+                checks.append(ServiceCheck(
+                    name: "Claude CLI",
+                    status: authStatus,
+                    detail: resp.claudeAuthStatus.replacingOccurrences(of: "_", with: " ")
+                ))
+
+                // WS Reconnects
+                let wsStatus: ServiceCheck.CheckStatus = resp.wsReconnectCount5min < 3 ? .green :
+                    resp.wsReconnectCount5min <= 10 ? .amber : .red
+                checks.append(ServiceCheck(
+                    name: "WS Reconnects (5m)",
+                    status: wsStatus,
+                    detail: "\(resp.wsReconnectCount5min)"
+                ))
+
+                // Thread health
+                let deadThreads = resp.threadHealth.filter { $0.value == "dead" }
+                let threadStatus: ServiceCheck.CheckStatus = deadThreads.isEmpty ? .green :
+                    deadThreads.count == 1 ? .amber : .red
+                let threadDetail = deadThreads.isEmpty ? "\(resp.threadHealth.count) alive" :
+                    "\(deadThreads.count) dead"
+                checks.append(ServiceCheck(
+                    name: "Threads",
+                    status: threadStatus,
+                    detail: threadDetail
+                ))
+
+                // Work cache
+                if let age = resp.workCacheAgeSeconds {
+                    let cacheStatus: ServiceCheck.CheckStatus = age < 120 ? .green :
+                        age < 300 ? .amber : .red
+                    checks.append(ServiceCheck(
+                        name: "Work Cache",
+                        status: cacheStatus,
+                        detail: age < 60 ? "fresh" : "\(age / 60)m old"
+                    ))
+                }
+
+                // ttyd Terminal
+                checks.append(ServiceCheck(
+                    name: "ttyd Terminal",
+                    status: resp.ttydOk ? .green : .red,
+                    detail: resp.ttydOk ? "running" : "not running"
+                ))
+
+                // Last Claude error
+                if !resp.lastClaudeError.isEmpty {
+                    checks.append(ServiceCheck(
+                        name: "Last Error",
+                        status: .amber,
+                        detail: String(resp.lastClaudeError.prefix(30))
+                    ))
+                }
+
+                serviceChecks = checks
+            }
+        }.resume()
+    }
+
+    private func formatUptime(_ seconds: Int) -> String {
+        if seconds < 3600 { return "\(seconds / 60)m" }
+        if seconds < 86400 { return "\(seconds / 3600)h \((seconds % 3600) / 60)m" }
+        return "\(seconds / 86400)d \((seconds % 86400) / 3600)h"
     }
 
     /// Post a local notification if backup is >48h old

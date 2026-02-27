@@ -8,56 +8,110 @@ struct GovernorsView: View {
     @State private var showResetConfirm = false
     @State private var loadError: String?
 
+    // Picker state — persisted in UserDefaults
+    @AppStorage("govSelectedSchool") private var selectedSchool = "victoria"
+    @AppStorage("govSelectedModel") private var selectedModel = "haiku"
+
     private let accent = Color(hex: "#C9A96E")
+
+    private let schoolOptions: [(label: String, value: String)] = [
+        ("Victoria", "victoria"),
+        ("Thomas Coram", "thomas_coram"),
+        ("Both", "both"),
+    ]
+
+    private let modelOptions: [(label: String, value: String)] = [
+        ("Haiku", "haiku"),
+        ("Sonnet", "sonnet"),
+        ("Gemini Flash", "gemini_flash"),
+    ]
 
     private var governorsURL: URL? {
         let parts = ws.serverHost.split(separator: ":")
         let ip = parts.first ?? "100.126.253.40"
-        // HTTPS reverse proxy (port 8502) → Streamlit (port 8501)
-        // iOS requires secure context for Streamlit's JS APIs to work
-        return URL(string: "https://\(ip):8502/?app_user=tim")
+        return URL(string: "https://\(ip):8502/?app_user=tim&school=\(selectedSchool)&model=\(selectedModel)")
     }
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color(hex: "#1A1A2E").ignoresSafeArea()
-
-                if let url = governorsURL {
-                    WebViewWrapper(url: url, isLoading: $isLoading, webView: $webView, loadError: $loadError)
-                } else {
-                    Text("Invalid server URL")
-                        .foregroundColor(Color(hex: "#888888"))
-                }
-
-                if isLoading {
-                    ProgressView("Loading Governors Agent...")
-                        .foregroundColor(accent)
-                }
-
-                if let error = loadError {
-                    VStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 32))
-                            .foregroundColor(.orange)
-                        Text(error)
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(Color(hex: "#EE5555"))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 20)
-                        Button("Retry") {
-                            loadError = nil
-                            isLoading = true
-                            if let url = governorsURL {
-                                webView?.load(URLRequest(url: url))
+            VStack(spacing: 0) {
+                // Compact picker bar
+                HStack(spacing: 12) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "building.2")
+                            .font(.system(size: 11))
+                            .foregroundColor(accent)
+                        Picker("School", selection: $selectedSchool) {
+                            ForEach(schoolOptions, id: \.value) { option in
+                                Text(option.label).tag(option.value)
                             }
                         }
-                        .foregroundColor(accent)
-                        .padding(.top, 8)
+                        .pickerStyle(.menu)
+                        .tint(accent)
                     }
-                    .padding()
-                    .background(Color(hex: "#1A1A2E").opacity(0.95))
-                    .cornerRadius(12)
+
+                    Divider()
+                        .frame(height: 20)
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "cpu")
+                            .font(.system(size: 11))
+                            .foregroundColor(accent)
+                        Picker("Model", selection: $selectedModel) {
+                            ForEach(modelOptions, id: \.value) { option in
+                                Text(option.label).tag(option.value)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(accent)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color(hex: "#16213E"))
+                .onChange(of: selectedSchool) { _, _ in reloadWebView() }
+                .onChange(of: selectedModel) { _, _ in reloadWebView() }
+
+                // WebView content
+                ZStack {
+                    Color(hex: "#1A1A2E").ignoresSafeArea()
+
+                    if let url = governorsURL {
+                        WebViewWrapper(url: url, isLoading: $isLoading, webView: $webView, loadError: $loadError)
+                    } else {
+                        Text("Invalid server URL")
+                            .foregroundColor(Color(hex: "#888888"))
+                    }
+
+                    if isLoading {
+                        ProgressView("Loading Governors Agent...")
+                            .foregroundColor(accent)
+                    }
+
+                    if let error = loadError {
+                        VStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.system(size: 32))
+                                .foregroundColor(.orange)
+                            Text(error)
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundColor(Color(hex: "#EE5555"))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 20)
+                            Button("Retry") {
+                                loadError = nil
+                                isLoading = true
+                                if let url = governorsURL {
+                                    webView?.load(URLRequest(url: url))
+                                }
+                            }
+                            .foregroundColor(accent)
+                            .padding(.top, 8)
+                        }
+                        .padding()
+                        .background(Color(hex: "#1A1A2E").opacity(0.95))
+                        .cornerRadius(12)
+                    }
                 }
             }
             .navigationTitle("Governors")
@@ -79,11 +133,7 @@ struct GovernorsView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        loadError = nil
-                        if let url = governorsURL {
-                            webView?.load(URLRequest(url: url))
-                            isLoading = true
-                        }
+                        reloadWebView()
                     } label: {
                         Image(systemName: "arrow.clockwise")
                             .foregroundColor(accent)
@@ -98,6 +148,14 @@ struct GovernorsView: View {
             } message: {
                 Text("This will clear the conversation for all users. Start fresh?")
             }
+        }
+    }
+
+    private func reloadWebView() {
+        loadError = nil
+        if let url = governorsURL {
+            webView?.load(URLRequest(url: url))
+            isLoading = true
         }
     }
 

@@ -48,6 +48,7 @@ class WebSocketService: ObservableObject {
     @Published var permissionQueue: [PermissionRequest] = []
     var pendingPermission: PermissionRequest? { permissionQueue.first }
     @Published var permissionLevel: PermissionLevel = .terminalOnly
+    @Published var reconnectCount: Int = 0
 
     /// Highest event offset seen — used to skip replayed events on reconnect
     private var lastSeenOffset: Int = -1
@@ -145,6 +146,7 @@ class WebSocketService: ObservableObject {
 
     func reconnect() {
         connectionState = .reconnecting
+        reconnectCount += 1
         reconnectTask?.cancel()
         reconnectTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: UInt64(reconnectDelay * 1_000_000_000))

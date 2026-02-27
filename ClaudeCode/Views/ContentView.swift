@@ -72,13 +72,21 @@ struct ContentView: View {
                 }
                 .tag(3)
 
+            // Terminal is NOT zoomed — xterm.js handles its own scrolling
+            TerminalView()
+                .tabItem {
+                    Image(systemName: "terminal.fill")
+                    Text("Terminal")
+                }
+                .tag(4)
+
             // Settings is NOT zoomed (so the slider remains usable at all zoom levels)
             SettingsView()
                 .tabItem {
                     Image(systemName: "gear")
                     Text("Settings")
                 }
-                .tag(4)
+                .tag(5)
         }
         .tint(Color(hex: "#C9A96E"))
         .onAppear {
