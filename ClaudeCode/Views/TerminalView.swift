@@ -6,6 +6,7 @@ struct TerminalView: View {
     @State private var isLoading = true
     @State private var webView: WKWebView?
     @State private var loadError: String?
+    @State private var isResetting = false
 
     private let accent = Color(hex: "#C9A96E")
 
@@ -82,16 +83,68 @@ struct TerminalView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        loadError = nil
-                        if let url = terminalURL {
-                            webView?.load(URLRequest(url: url))
-                            isLoading = true
+                    HStack(spacing: 16) {
+                        Button {
+                            resetTerminal()
+                        } label: {
+                            if isResetting {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                                    .tint(accent)
+                            } else {
+                                Image(systemName: "arrow.trianglehead.2.counterclockwise")
+                                    .foregroundColor(accent)
+                            }
                         }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .foregroundColor(accent)
+                        .disabled(isResetting)
+
+                        Button {
+                            loadError = nil
+                            if let url = terminalURL {
+                                webView?.load(URLRequest(url: url))
+                                isLoading = true
+                            }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .foregroundColor(accent)
+                        }
                     }
+                }
+            }
+        }
+    }
+
+    private func resetTerminal() {
+        let parts = ws.serverHost.split(separator: ":")
+        let ip = parts.first ?? "100.126.253.40"
+        guard let url = URL(string: "http://\(ip):8081/terminal-reset") else { return }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        let token = UserDefaults.standard.string(forKey: "authToken") ?? ""
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        isResetting = true
+        loadError = nil
+
+        Task {
+            do {
+                let (_, _) = try await URLSession.shared.data(for: request)
+                // Wait for ttyd to be ready
+                try await Task.sleep(nanoseconds: 3_000_000_000)
+                await MainActor.run {
+                    isResetting = false
+                    isLoading = true
+                    if let termURL = terminalURL {
+                        webView?.load(URLRequest(url: termURL))
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isResetting = false
+                    loadError = "Reset failed: \(error.localizedDescription)"
                 }
             }
         }
