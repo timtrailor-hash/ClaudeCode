@@ -12,7 +12,7 @@ struct GovernorsView: View {
 
     private var governorsURL: URL? {
         let parts = ws.serverHost.split(separator: ":")
-        let ip = parts.first ?? "100.112.125.42"
+        let ip = parts.first ?? "100.126.253.40"
         // HTTPS reverse proxy (port 8502) → Streamlit (port 8501)
         // iOS requires secure context for Streamlit's JS APIs to work
         return URL(string: "https://\(ip):8502/?app_user=tim")
@@ -103,7 +103,7 @@ struct GovernorsView: View {
 
     private func resetChat() {
         let parts = ws.serverHost.split(separator: ":")
-        let ip = parts.first ?? "100.112.125.42"
+        let ip = parts.first ?? "100.126.253.40"
         guard let url = URL(string: "http://\(ip):8081/governors-reset") else { return }
 
         var request = URLRequest(url: url)

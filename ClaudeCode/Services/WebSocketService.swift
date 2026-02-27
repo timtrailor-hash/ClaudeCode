@@ -58,7 +58,7 @@ class WebSocketService: ObservableObject {
 
     // Server config — stored in UserDefaults
     var serverHost: String {
-        get { UserDefaults.standard.string(forKey: "serverHost") ?? "100.112.125.42:8081" }
+        get { UserDefaults.standard.string(forKey: "serverHost") ?? "100.126.253.40:8081" }
         set {
             UserDefaults.standard.set(newValue, forKey: "serverHost")
             reconnect()
