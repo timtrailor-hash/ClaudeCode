@@ -66,7 +66,6 @@ struct MessageBubble: View {
                         Text(message.content + (message.isStreaming ? "\u{2588}" : ""))
                             .font(.system(size: 14))
                             .foregroundColor(Color(hex: "#E0E0E0"))
-                            .textSelection(.enabled)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 10)
                     }
@@ -79,6 +78,13 @@ struct MessageBubble: View {
                 .cornerRadius(16, corners: message.role == .user
                     ? [.topLeft, .topRight, .bottomLeft]
                     : [.topLeft, .topRight, .bottomRight])
+                .contextMenu {
+                    Button {
+                        UIPasteboard.general.string = message.content
+                    } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                    }
+                }
 
                 // Timestamp
                 if !message.isStreaming {

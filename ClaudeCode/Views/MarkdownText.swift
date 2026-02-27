@@ -72,13 +72,11 @@ struct MarkdownText: View {
             Text(attributed)
                 .font(.system(size: 14))
                 .foregroundColor(Color(hex: "#E0E0E0"))
-                .textSelection(.enabled)
                 .tint(Color(hex: "#C9A96E"))
         } else {
             Text(text)
                 .font(.system(size: 14))
                 .foregroundColor(Color(hex: "#E0E0E0"))
-                .textSelection(.enabled)
         }
     }
 
@@ -107,7 +105,6 @@ struct MarkdownText: View {
                 Text(code)
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(Color(hex: "#E0E0E0"))
-                    .textSelection(.enabled)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
             }
