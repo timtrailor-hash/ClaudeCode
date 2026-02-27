@@ -6,13 +6,16 @@ struct GovernorsView: View {
     @State private var isLoading = true
     @State private var webView: WKWebView?
     @State private var showResetConfirm = false
+    @State private var loadError: String?
 
     private let accent = Color(hex: "#C9A96E")
 
     private var governorsURL: URL? {
         let parts = ws.serverHost.split(separator: ":")
         let ip = parts.first ?? "100.112.125.42"
-        return URL(string: "http://\(ip):8080/governors/?app_user=tim")
+        // HTTPS reverse proxy (port 8502) → Streamlit (port 8501)
+        // iOS requires secure context for Streamlit's JS APIs to work
+        return URL(string: "https://\(ip):8502/?app_user=tim")
     }
 
     var body: some View {
@@ -21,8 +24,7 @@ struct GovernorsView: View {
                 Color(hex: "#1A1A2E").ignoresSafeArea()
 
                 if let url = governorsURL {
-                    WebViewWrapper(url: url, isLoading: $isLoading, webView: $webView)
-                        .ignoresSafeArea(edges: .bottom)
+                    WebViewWrapper(url: url, isLoading: $isLoading, webView: $webView, loadError: $loadError)
                 } else {
                     Text("Invalid server URL")
                         .foregroundColor(Color(hex: "#888888"))
@@ -31,6 +33,31 @@ struct GovernorsView: View {
                 if isLoading {
                     ProgressView("Loading Governors Agent...")
                         .foregroundColor(accent)
+                }
+
+                if let error = loadError {
+                    VStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 32))
+                            .foregroundColor(.orange)
+                        Text(error)
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(Color(hex: "#EE5555"))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 20)
+                        Button("Retry") {
+                            loadError = nil
+                            isLoading = true
+                            if let url = governorsURL {
+                                webView?.load(URLRequest(url: url))
+                            }
+                        }
+                        .foregroundColor(accent)
+                        .padding(.top, 8)
+                    }
+                    .padding()
+                    .background(Color(hex: "#1A1A2E").opacity(0.95))
+                    .cornerRadius(12)
                 }
             }
             .navigationTitle("Governors")
@@ -52,6 +79,7 @@ struct GovernorsView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        loadError = nil
                         if let url = governorsURL {
                             webView?.load(URLRequest(url: url))
                             isLoading = true
@@ -83,7 +111,6 @@ struct GovernorsView: View {
 
         Task {
             _ = try? await URLSession.shared.data(for: request)
-            // Reload the WebView after reset
             if let govURL = governorsURL {
                 await MainActor.run {
                     webView?.load(URLRequest(url: govURL))
@@ -98,6 +125,7 @@ struct WebViewWrapper: UIViewRepresentable {
     let url: URL
     @Binding var isLoading: Bool
     @Binding var webView: WKWebView?
+    @Binding var loadError: String?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -128,8 +156,30 @@ struct WebViewWrapper: UIViewRepresentable {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             Task { @MainActor in parent.isLoading = false }
         }
+
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-            Task { @MainActor in parent.isLoading = false }
+            Task { @MainActor in
+                parent.isLoading = false
+                parent.loadError = "Load failed: \(error.localizedDescription)"
+            }
+        }
+
+        func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+            Task { @MainActor in
+                parent.isLoading = false
+                parent.loadError = "Connection failed: \(error.localizedDescription)"
+            }
+        }
+
+        // Accept self-signed cert from our HTTPS reverse proxy
+        func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge,
+                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+            if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+               let trust = challenge.protectionSpace.serverTrust {
+                completionHandler(.useCredential, URLCredential(trust: trust))
+            } else {
+                completionHandler(.performDefaultHandling, nil)
+            }
         }
     }
 }
