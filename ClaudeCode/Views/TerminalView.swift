@@ -7,6 +7,7 @@ struct TerminalView: View {
     @State private var webView: WKWebView?
     @State private var loadError: String?
     @State private var isResetting = false
+    @State private var showCopied = false
 
     private let accent = Color(hex: "#C9A96E")
 
@@ -83,7 +84,27 @@ struct TerminalView: View {
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 16) {
+                    HStack(spacing: 14) {
+                        // Copy — grabs xterm.js selection, falls back to last 100 lines
+                        Button {
+                            copyFromTerminal()
+                        } label: {
+                            ZStack {
+                                Image(systemName: showCopied ? "checkmark" : "doc.on.doc")
+                                    .foregroundColor(showCopied ? .green : accent)
+                                    .font(.system(size: 14))
+                            }
+                        }
+
+                        // Paste — sends clipboard text to terminal
+                        Button {
+                            pasteToTerminal()
+                        } label: {
+                            Image(systemName: "doc.on.clipboard")
+                                .foregroundColor(accent)
+                                .font(.system(size: 14))
+                        }
+
                         Button {
                             resetTerminal()
                         } label: {
@@ -150,6 +171,61 @@ struct TerminalView: View {
         }
     }
 
+    private func copyFromTerminal() {
+        // Try xterm.js selection first, fall back to visible screen content
+        let js = """
+        (function() {
+            var term = window.term;
+            if (term) {
+                var sel = term.getSelection();
+                if (sel && sel.length > 0) return sel;
+                // No selection — grab last 100 visible lines
+                var buf = term.buffer.active;
+                var lines = [];
+                var start = Math.max(0, buf.baseY + buf.cursorY - 100);
+                var end = buf.baseY + buf.cursorY;
+                for (var i = start; i <= end; i++) {
+                    var line = buf.getLine(i);
+                    if (line) lines.push(line.translateToString(true));
+                }
+                return lines.join('\\n');
+            }
+            return '';
+        })()
+        """
+        webView?.evaluateJavaScript(js) { result, _ in
+            if let text = result as? String, !text.isEmpty {
+                UIPasteboard.general.string = text
+                showCopied = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    showCopied = false
+                }
+            }
+        }
+    }
+
+    private func pasteToTerminal() {
+        guard let text = UIPasteboard.general.string, !text.isEmpty else { return }
+        // Escape for JS string and send to xterm.js via ttyd's websocket
+        let escaped = text
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .replacingOccurrences(of: "\t", with: "\\t")
+        let js = """
+        (function() {
+            var term = window.term;
+            if (term) {
+                term.paste('\(escaped)');
+                return true;
+            }
+            return false;
+        })()
+        """
+        webView?.evaluateJavaScript(js, completionHandler: nil)
+    }
+
     private func newTmuxWindow() {
         let parts = ws.serverHost.split(separator: ":")
         let ip = parts.first ?? "100.126.253.40"
@@ -197,9 +273,11 @@ struct TerminalWebViewWrapper: UIViewRepresentable {
         wv.isOpaque = false
         wv.backgroundColor = UIColor.black
         wv.scrollView.backgroundColor = UIColor.black
-        // Disable bounce but keep scroll enabled — xterm.js handles its own scrollback
+        // Disable WKWebView's native scrollView entirely so all touch/swipe
+        // events pass through to xterm.js, which handles its own scrollback buffer.
         wv.scrollView.bounces = false
-        wv.scrollView.isScrollEnabled = true
+        wv.scrollView.isScrollEnabled = false
+        wv.scrollView.panGestureRecognizer.isEnabled = false
         wv.load(URLRequest(url: url))
 
         DispatchQueue.main.async {
@@ -215,6 +293,28 @@ struct TerminalWebViewWrapper: UIViewRepresentable {
         init(_ parent: TerminalWebViewWrapper) { self.parent = parent }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            // After ttyd/xterm.js loads, ensure touch scrolling works and
+            // store a reference to the terminal for copy/paste operations.
+            let js = """
+            (function() {
+                function setup() {
+                    if (window.term) {
+                        // Store ref for copy/paste buttons
+                        window.term.options.scrollback = 5000;
+                        // Enable xterm.js touch handling for mobile scroll
+                        var viewport = document.querySelector('.xterm-viewport');
+                        if (viewport) {
+                            viewport.style.overflow = 'hidden';
+                            viewport.style.touchAction = 'none';
+                        }
+                        return true;
+                    }
+                    return false;
+                }
+                if (!setup()) { setTimeout(setup, 500); setTimeout(setup, 1500); }
+            })()
+            """
+            webView.evaluateJavaScript(js, completionHandler: nil)
             Task { @MainActor in parent.isLoading = false }
         }
 
