@@ -12,9 +12,9 @@ struct TerminalView: View {
     private var terminalURL: URL? {
         let parts = ws.serverHost.split(separator: ":")
         let ip = parts.first ?? "100.126.253.40"
-        let token = UserDefaults.standard.string(forKey: "authToken") ?? ""
-        // Basic auth embedded in URL — ttyd uses same AUTH_TOKEN as credential password
-        return URL(string: "http://claude:\(token)@\(ip):7681")
+        // No auth — ttyd runs without --credential flag.
+        // Protected by Tailscale private network (same as conversation_server).
+        return URL(string: "http://\(ip):7681")
     }
 
     var body: some View {
@@ -179,16 +179,7 @@ struct TerminalWebViewWrapper: UIViewRepresentable {
             }
         }
 
-        // Accept basic auth challenge (ttyd credential)
-        func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge,
-                     completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-            if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodHTTPBasic {
-                let token = UserDefaults.standard.string(forKey: "authToken") ?? ""
-                let credential = URLCredential(user: "claude", password: token, persistence: .forSession)
-                completionHandler(.useCredential, credential)
-            } else {
-                completionHandler(.performDefaultHandling, nil)
-            }
-        }
+        // No auth challenge handler needed — ttyd runs without credentials,
+        // protected by Tailscale private network.
     }
 }
