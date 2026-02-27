@@ -1,5 +1,11 @@
 import SwiftUI
 
+/// Wrapper to make URL identifiable for .sheet(item:)
+struct IdentifiableURL: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
 struct SettingsView: View {
     @EnvironmentObject var ws: WebSocketService
     @StateObject private var notifPrefs = NotificationPreferences.shared
@@ -8,8 +14,7 @@ struct SettingsView: View {
     @AppStorage("appZoomLevel") private var zoomLevel: Double = 1.0
 
     // Terminal auth state
-    @State private var showAuthSheet = false
-    @State private var authURL: URL?
+    @State private var authSheetItem: IdentifiableURL?
     @State private var authInProgress = false
     @State private var authStatusMessage: String?
     @State private var authStatusIsError = false
@@ -199,20 +204,18 @@ struct SettingsView: View {
             hostInput = ws.serverHost
             tokenInput = ws.authToken
         }
-        .sheet(isPresented: $showAuthSheet) {
-            if let url = authURL {
-                TerminalAuthSheet(
-                    url: url,
-                    onCode: { code in
-                        showAuthSheet = false
-                        completeAuth(code: code)
-                    },
-                    onCancel: {
-                        showAuthSheet = false
-                        authInProgress = false
-                    }
-                )
-            }
+        .sheet(item: $authSheetItem) { item in
+            TerminalAuthSheet(
+                url: item.url,
+                onCode: { code in
+                    authSheetItem = nil
+                    completeAuth(code: code)
+                },
+                onCancel: {
+                    authSheetItem = nil
+                    authInProgress = false
+                }
+            )
         }
     }
 
@@ -258,8 +261,7 @@ struct SettingsView: View {
                 if let oauthURLString = json["url"] as? String,
                    let oauthURL = URL(string: oauthURLString) {
                     await MainActor.run {
-                        authURL = oauthURL
-                        showAuthSheet = true
+                        authSheetItem = IdentifiableURL(url: oauthURL)
                     }
                 } else {
                     let error = json["error"] as? String ?? "Unknown error"
