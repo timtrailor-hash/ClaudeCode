@@ -46,22 +46,36 @@ struct ChatView: View {
                                 }
                             }
 
-                            Color.clear
-                                .frame(height: 1)
-                                .id("bottom")
+                            // Invisible anchor — also detects when user scrolls away from bottom
+                            GeometryReader { geo in
+                                Color.clear
+                                    .preference(key: BottomVisibleKey.self,
+                                                value: geo.frame(in: .named("chatScroll")).maxY)
+                            }
+                            .frame(height: 1)
+                            .id("bottom")
                         }
                         .padding(.horizontal, 10)
                         .padding(.top, 8)
                     }
+                    .coordinateSpace(name: "chatScroll")
                     .scrollDismissesKeyboard(.never)
-                    .simultaneousGesture(DragGesture().onChanged { _ in
-                        autoScroll = false
-                    })
+                    .onPreferenceChange(BottomVisibleKey.self) { bottomY in
+                        // If the bottom anchor is well below the visible area,
+                        // user has scrolled up — disable auto-scroll.
+                        // If it's near the bottom edge, re-enable.
+                        if let bottomY {
+                            let screenH = UIScreen.main.bounds.height
+                            autoScroll = bottomY < screenH + 100
+                        }
+                    }
                     .overlay(alignment: .bottomTrailing) {
                         if !autoScroll {
                             Button {
                                 autoScroll = true
-                                proxy.scrollTo("bottom", anchor: .bottom)
+                                withAnimation {
+                                    proxy.scrollTo("bottom", anchor: .bottom)
+                                }
                             } label: {
                                 Image(systemName: "arrow.down.circle.fill")
                                     .font(.system(size: 32))
@@ -80,7 +94,6 @@ struct ChatView: View {
                     }
                     .onChange(of: ws.messages.count) { _, _ in
                         if autoScroll {
-                            autoScroll = true
                             proxy.scrollTo("bottom")
                         }
                     }
@@ -502,5 +515,13 @@ struct FileImagePicker: UIViewControllerRepresentable {
                 parent.onPick(data)
             }
         }
+    }
+}
+
+// Preference key to track whether the bottom anchor is visible
+private struct BottomVisibleKey: PreferenceKey {
+    static var defaultValue: CGFloat? = nil
+    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
+        value = nextValue() ?? value
     }
 }
