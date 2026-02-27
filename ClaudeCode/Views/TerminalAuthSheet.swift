@@ -34,17 +34,22 @@ struct OAuthWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
+        // Allow inline media and JavaScript for Google SSO
+        config.preferences.javaScriptCanOpenWindowsAutomatically = true
         let wv = WKWebView(frame: .zero, configuration: config)
         wv.navigationDelegate = context.coordinator
+        wv.uiDelegate = context.coordinator  // Handle popups (Google SSO)
         wv.load(URLRequest(url: url))
         return wv
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {}
 
-    class Coordinator: NSObject, WKNavigationDelegate {
+    class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         let onCode: (String) -> Void
         init(onCode: @escaping (String) -> Void) { self.onCode = onCode }
+
+        // MARK: - WKNavigationDelegate
 
         func webView(
             _ webView: WKWebView,
@@ -62,6 +67,21 @@ struct OAuthWebView: UIViewRepresentable {
                 return
             }
             decisionHandler(.allow)
+        }
+
+        // MARK: - WKUIDelegate (handle popups for Google SSO)
+
+        func webView(
+            _ webView: WKWebView,
+            createWebViewWith configuration: WKWebViewConfiguration,
+            for navigationAction: WKNavigationAction,
+            windowFeatures: WKWindowFeatures
+        ) -> WKWebView? {
+            // Google SSO tries to open a popup — load it in the same webview instead
+            if let url = navigationAction.request.url {
+                webView.load(URLRequest(url: url))
+            }
+            return nil
         }
     }
 }
