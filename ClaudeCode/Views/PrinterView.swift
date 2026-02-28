@@ -48,6 +48,7 @@ struct SV08Status: Decodable {
     let alpha: Double?
     let optimal_speed_pct: Int?
     let current_speed_pct: Int?
+    let auto_speed_enabled: Bool?
     let eta_str: String?
     let eta_confidence: String?
     let eta_method: String?
@@ -89,6 +90,8 @@ struct PrinterView: View {
     @State private var lastRefresh = Date()
     @State private var refreshTimer: Timer?
     @State private var showObjectSkip = false
+    @State private var manualSpeedPct: Double = 100
+    @State private var isSettingSpeed = false
 
     private let background = Color(hex: "#1A1A2E")
     private let cardBg = Color(hex: "#16213E")
@@ -302,7 +305,9 @@ struct PrinterView: View {
                     speedFactor: sv08.speed_factor,
                     optimalPct: sv08.optimal_speed_pct,
                     liveVelocity: sv08.live_velocity,
-                    alpha: sv08.alpha
+                    alpha: sv08.alpha,
+                    autoSpeedEnabled: sv08.auto_speed_enabled ?? false,
+                    isPrinting: sv08.state?.lowercased() == "printing"
                 )
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
@@ -798,9 +803,9 @@ struct PrinterView: View {
         return .orange
     }
 
-    private func speedSection(speedFactor: Double?, optimalPct: Int?, liveVelocity: Double?, alpha: Double?) -> some View {
+    private func speedSection(speedFactor: Double?, optimalPct: Int?, liveVelocity: Double?, alpha: Double?, autoSpeedEnabled: Bool, isPrinting: Bool) -> some View {
         VStack(spacing: 10) {
-            // Speed factor with optimal
+            // Speed factor display
             if let factor = speedFactor {
                 HStack {
                     Image(systemName: "speedometer")
@@ -814,22 +819,80 @@ struct PrinterView: View {
                         .font(.system(size: 16, weight: .bold, design: .monospaced))
                         .foregroundColor(bodyText)
                 }
+            }
 
-                if let optimal = optimalPct {
-                    HStack {
-                        Spacer()
-                        HStack(spacing: 4) {
-                            Image(systemName: "target")
-                                .font(.system(size: 10))
-                            Text("Optimal: \(optimal)%")
-                                .font(.system(size: 12, weight: .medium))
-                        }
+            // Auto-speed toggle
+            if isPrinting {
+                HStack {
+                    Image(systemName: "bolt.badge.automatic")
+                        .font(.system(size: 12))
                         .foregroundColor(accent)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(accent.opacity(0.12))
-                        .cornerRadius(6)
+                    Text("Auto Speed")
+                        .font(.system(size: 13))
+                        .foregroundColor(labelText)
+                    Spacer()
+                    Toggle("", isOn: Binding(
+                        get: { autoSpeedEnabled },
+                        set: { newValue in toggleAutoSpeed(enabled: newValue) }
+                    ))
+                    .tint(accent)
+                    .labelsHidden()
+                }
+
+                if autoSpeedEnabled {
+                    if let optimal = optimalPct {
+                        HStack {
+                            Spacer()
+                            HStack(spacing: 4) {
+                                Image(systemName: "target")
+                                    .font(.system(size: 10))
+                                Text("Optimal: \(optimal)%")
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .foregroundColor(accent)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(accent.opacity(0.12))
+                            .cornerRadius(6)
+                        }
                     }
+                } else {
+                    // Manual speed slider
+                    VStack(spacing: 6) {
+                        HStack {
+                            Text("Manual: \(Int(manualSpeedPct))%")
+                                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                .foregroundColor(accent)
+                            Spacer()
+                            if isSettingSpeed {
+                                ProgressView().scaleEffect(0.6)
+                            }
+                        }
+                        Slider(value: $manualSpeedPct, in: 50...250, step: 5)
+                            .tint(accent)
+                            .onChange(of: manualSpeedPct) { _ in }
+                            .onReceive(
+                                NotificationCenter.default.publisher(
+                                    for: .init("SpeedSliderCommit"))
+                            ) { _ in }
+                        HStack {
+                            Text("50%").font(.system(size: 10)).foregroundColor(dimText)
+                            Spacer()
+                            Text("250%").font(.system(size: 10)).foregroundColor(dimText)
+                        }
+                    }
+                    Button {
+                        setManualSpeed(pct: Int(manualSpeedPct))
+                    } label: {
+                        Text("Apply \(Int(manualSpeedPct))%")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(accent)
+                            .cornerRadius(8)
+                    }
+                    .disabled(isSettingSpeed)
                 }
             }
 
@@ -863,6 +926,54 @@ struct PrinterView: View {
                         .font(.system(size: 14, weight: .medium, design: .monospaced))
                         .foregroundColor(bodyText)
                 }
+            }
+        }
+        .onAppear {
+            if let factor = speedFactor {
+                manualSpeedPct = round(factor * 100)
+            }
+        }
+    }
+
+    private func toggleAutoSpeed(enabled: Bool) {
+        let parts = ws.serverHost.split(separator: ":")
+        let ip = parts.first ?? "100.126.253.40"
+        guard let url = URL(string: "http://\(ip):8081/printer-speed-auto") else { return }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let token = UserDefaults.standard.string(forKey: "authToken") ?? ""
+        if !token.isEmpty { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["enabled": enabled])
+
+        Task {
+            _ = try? await URLSession.shared.data(for: request)
+            await MainActor.run { refreshPrinterData() }
+        }
+    }
+
+    private func setManualSpeed(pct: Int) {
+        isSettingSpeed = true
+        let parts = ws.serverHost.split(separator: ":")
+        let ip = parts.first ?? "100.126.253.40"
+        guard let url = URL(string: "http://\(ip):8081/printer-speed-set") else {
+            isSettingSpeed = false
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let token = UserDefaults.standard.string(forKey: "authToken") ?? ""
+        if !token.isEmpty { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["speed_pct": pct])
+
+        Task {
+            _ = try? await URLSession.shared.data(for: request)
+            await MainActor.run {
+                isSettingSpeed = false
+                refreshPrinterData()
             }
         }
     }
