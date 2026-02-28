@@ -27,6 +27,7 @@
 		A1B2C3D4E5F60001000012 /* SystemHealthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60002000012 /* SystemHealthView.swift */; };
 		A1B2C3D4E5F60001000013 /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60002000013 /* TerminalView.swift */; };
 		A1B2C3D4E5F60001000014 /* TerminalAuthSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60002000014 /* TerminalAuthSheet.swift */; };
+		A1B2C3D4E5F60001000015 /* GoogleAuthSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60002000015 /* GoogleAuthSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -50,6 +51,7 @@
 		A1B2C3D4E5F60002000012 /* SystemHealthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemHealthView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60002000013 /* TerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60002000014 /* TerminalAuthSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalAuthSheet.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60002000015 /* GoogleAuthSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GoogleAuthSheet.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F60003000001 /* ClaudeCode.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClaudeCode.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -119,6 +121,7 @@
 				A1B2C3D4E5F60002000012 /* SystemHealthView.swift */,
 				A1B2C3D4E5F60002000013 /* TerminalView.swift */,
 				A1B2C3D4E5F60002000014 /* TerminalAuthSheet.swift */,
+				A1B2C3D4E5F60002000015 /* GoogleAuthSheet.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -219,6 +222,7 @@
 				A1B2C3D4E5F60001000012 /* SystemHealthView.swift in Sources */,
 				A1B2C3D4E5F60001000013 /* TerminalView.swift in Sources */,
 				A1B2C3D4E5F60001000014 /* TerminalAuthSheet.swift in Sources */,
+				A1B2C3D4E5F60001000015 /* GoogleAuthSheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
