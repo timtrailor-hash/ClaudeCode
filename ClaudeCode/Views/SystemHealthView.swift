@@ -58,6 +58,7 @@ struct ServiceCheck: Identifiable {
 /// Color-coded system health dashboard shown in Settings
 struct SystemHealthSection: View {
     let serverHost: String
+    var printerAlerts: [PrinterAlert] = []
 
     @State private var items: [HealthItem] = []
     @State private var serviceChecks: [ServiceCheck] = []
@@ -68,6 +69,35 @@ struct SystemHealthSection: View {
     private let dimText = Color(hex: "#888888")
 
     var body: some View {
+        // Recent Alerts section
+        if !printerAlerts.isEmpty {
+            Section(header: Text("Recent Alerts")) {
+                ForEach(printerAlerts.prefix(10)) { alert in
+                    HStack(spacing: 10) {
+                        Circle()
+                            .fill(alertColor(alert.event))
+                            .frame(width: 10, height: 10)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(alert.message)
+                                .font(.system(size: 13))
+                                .lineLimit(2)
+
+                            HStack(spacing: 6) {
+                                Text(alert.printer.uppercased())
+                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                    .foregroundColor(dimText)
+                                Text(alertTimeAgo(alert.timestamp))
+                                    .font(.system(size: 10))
+                                    .foregroundColor(dimText)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+
         // Service Health section (from /health endpoint)
         Section(header: HStack {
             Text("Service Health")
@@ -430,6 +460,28 @@ struct SystemHealthSection: View {
             trigger: nil
         )
         UNUserNotificationCenter.current().add(request)
+    }
+
+    private func alertColor(_ event: String) -> Color {
+        let e = event.lowercased()
+        if e.contains("error") || e.contains("fail") || e.contains("critical") || e.contains("corruption") {
+            return .red
+        }
+        if e.contains("warn") || e.contains("paus") || e.contains("cancel") {
+            return .orange
+        }
+        if e.contains("complete") || e.contains("restore") || e.contains("recover") {
+            return .green
+        }
+        return .yellow
+    }
+
+    private func alertTimeAgo(_ date: Date) -> String {
+        let interval = Date().timeIntervalSince(date)
+        if interval < 60 { return "just now" }
+        if interval < 3600 { return "\(Int(interval / 60))m ago" }
+        if interval < 86400 { return "\(Int(interval / 3600))h ago" }
+        return "\(Int(interval / 86400))d ago"
     }
 
     private func postBackupAlert(message: String) {

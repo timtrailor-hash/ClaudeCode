@@ -79,6 +79,29 @@ struct A1Status: Decodable {
     let eta_history: [EtaHistoryEntry]?
 }
 
+// MARK: - Resume Info Model
+
+struct ResumeInfo {
+    let available: Bool
+    let filename: String
+    let suggestedLayer: Int
+    let totalLayers: Int
+    let progressPct: Double
+    let timeSavedH: Double
+    let ageHours: Double
+
+    init(from json: [String: Any]) {
+        available = json["available"] as? Bool ?? false
+        let cp = json["checkpoint"] as? [String: Any] ?? [:]
+        filename = cp["filename"] as? String ?? ""
+        suggestedLayer = json["suggested_layer"] as? Int ?? 0
+        totalLayers = cp["total_layers"] as? Int ?? 0
+        progressPct = cp["progress_pct"] as? Double ?? 0
+        timeSavedH = json["estimated_time_saved_h"] as? Double ?? 0
+        ageHours = json["age_hours"] as? Double ?? 0
+    }
+}
+
 // MARK: - Printer View
 
 struct PrinterView: View {
@@ -90,8 +113,10 @@ struct PrinterView: View {
     @State private var lastRefresh = Date()
     @State private var refreshTimer: Timer?
     @State private var showObjectSkip = false
+    @State private var showResumeSheet = false
     @State private var manualSpeedPct: Double = 100
     @State private var isSettingSpeed = false
+    @State private var resumeInfo: ResumeInfo?
 
     private let background = Color(hex: "#1A1A2E")
     private let cardBg = Color(hex: "#16213E")
@@ -191,6 +216,12 @@ struct PrinterView: View {
             ObjectSkipView()
                 .environmentObject(ws)
         }
+        .sheet(isPresented: $showResumeSheet) {
+            if let resume = resumeInfo {
+                ResumeSheetView(resume: resume)
+                    .environmentObject(ws)
+            }
+        }
     }
 
     // MARK: - SV08 Card
@@ -232,6 +263,15 @@ struct PrinterView: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
+                }
+
+                // Resume card — show when not printing and checkpoint exists
+                if let state = sv08.state?.lowercased(),
+                   !state.contains("print"),
+                   let resume = resumeInfo, resume.available {
+                    resumeCard(resume: resume)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 10)
                 }
 
                 // Camera image
@@ -1005,6 +1045,66 @@ struct PrinterView: View {
         .padding(.top, 4)
     }
 
+    // MARK: - Resume Card
+
+    private func resumeCard(resume: ResumeInfo) -> some View {
+        VStack(spacing: 10) {
+            HStack {
+                Image(systemName: "arrow.counterclockwise.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(.orange)
+                Text("Resume Available")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(bodyText)
+                Spacer()
+                Text(String(format: "Save ~%.1fh", resume.timeSavedH))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.green)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.green.opacity(0.15))
+                    .cornerRadius(6)
+            }
+
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(resume.filename)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundColor(labelText)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text("Layer \(resume.suggestedLayer)/\(resume.totalLayers) · \(String(format: "%.1f%%", resume.progressPct))")
+                        .font(.system(size: 11))
+                        .foregroundColor(dimText)
+                }
+                Spacer()
+            }
+
+            Button {
+                showResumeSheet = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 12))
+                    Text("Resume from Layer \(resume.suggestedLayer)")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(Color.orange)
+                .cornerRadius(8)
+            }
+        }
+        .padding(14)
+        .background(Color.orange.opacity(0.08))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+        )
+    }
+
     // MARK: - Data Fetching
 
     private func authedRequest(url: URL) -> URLRequest {
@@ -1047,10 +1147,33 @@ struct PrinterView: View {
         }
     }
 
+    private func fetchResumeInfo() async {
+        let urlString = "\(serverBaseURL)/printer-resume-info"
+        guard let url = URL(string: urlString) else { return }
+
+        do {
+            let request = authedRequest(url: url)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  (200...299).contains(httpResponse.statusCode),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                resumeInfo = nil
+                return
+            }
+            let info = ResumeInfo(from: json)
+            resumeInfo = info.available ? info : nil
+        } catch {
+            resumeInfo = nil
+        }
+    }
+
     // MARK: - Auto Refresh
 
     private func startAutoRefresh() {
-        Task { await fetchPrinterStatus() }
+        Task {
+            await fetchPrinterStatus()
+            await fetchResumeInfo()
+        }
 
         refreshTimer?.invalidate()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in
@@ -1063,5 +1186,229 @@ struct PrinterView: View {
     private func stopAutoRefresh() {
         refreshTimer?.invalidate()
         refreshTimer = nil
+    }
+}
+
+
+// MARK: - Resume Sheet View
+
+struct ResumeSheetView: View {
+    @EnvironmentObject var ws: WebSocketService
+    @Environment(\.dismiss) var dismiss
+    let resume: ResumeInfo
+
+    @State private var adjustedLayer: Double
+    @State private var isResuming = false
+    @State private var resultMessage: String?
+    @State private var showConfirm = false
+
+    private let accent = Color(hex: "#C9A96E")
+    private let cardBg = Color(hex: "#16213E")
+    private let background = Color(hex: "#1A1A2E")
+    private let bodyText = Color(hex: "#E0E0E0")
+    private let dimText = Color(hex: "#888888")
+
+    init(resume: ResumeInfo) {
+        self.resume = resume
+        _adjustedLayer = State(initialValue: Double(resume.suggestedLayer))
+    }
+
+    private var serverBaseURL: String {
+        return "http://\(ws.serverHost)"
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                // File info
+                VStack(spacing: 8) {
+                    Image(systemName: "arrow.counterclockwise.circle.fill")
+                        .font(.system(size: 40))
+                        .foregroundColor(.orange)
+
+                    Text("Resume Print")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(bodyText)
+
+                    Text(resume.filename)
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundColor(dimText)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 20)
+                }
+                .padding(.top, 20)
+
+                // Layer picker
+                VStack(spacing: 8) {
+                    Text("Resume from Layer \(Int(adjustedLayer))")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(bodyText)
+
+                    Slider(
+                        value: $adjustedLayer,
+                        in: 1...Double(max(2, resume.totalLayers)),
+                        step: 1
+                    )
+                    .tint(.orange)
+                    .padding(.horizontal, 20)
+
+                    HStack {
+                        Text("Layer 1")
+                            .font(.system(size: 10))
+                            .foregroundColor(dimText)
+                        Spacer()
+                        Text("Layer \(resume.totalLayers)")
+                            .font(.system(size: 10))
+                            .foregroundColor(dimText)
+                    }
+                    .padding(.horizontal, 20)
+                }
+                .padding(.horizontal, 10)
+
+                // Info grid
+                VStack(spacing: 12) {
+                    infoRow(label: "Skipping", value: "\(Int(adjustedLayer)) layers")
+                    infoRow(label: "Time Saved", value: String(format: "~%.1f hours", resume.timeSavedH))
+                    infoRow(label: "Checkpoint Age", value: String(format: "%.1fh ago", resume.ageHours))
+                }
+                .padding(.horizontal, 30)
+
+                // Warning
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.yellow)
+                    Text("Ensure the partial print is still on the bed and the nozzle is clean.")
+                        .font(.system(size: 12))
+                        .foregroundColor(.yellow.opacity(0.8))
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+                .background(Color.yellow.opacity(0.1))
+                .cornerRadius(10)
+                .padding(.horizontal, 20)
+
+                Spacer()
+
+                // Result message
+                if let msg = resultMessage {
+                    Text(msg)
+                        .font(.system(size: 13))
+                        .foregroundColor(msg.contains("Error") ? .red : .green)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 20)
+                }
+
+                // Action button
+                Button {
+                    showConfirm = true
+                } label: {
+                    HStack(spacing: 8) {
+                        if isResuming {
+                            ProgressView()
+                                .tint(.white)
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "play.fill")
+                        }
+                        Text(isResuming ? "Generating Resume File..." : "Resume from Layer \(Int(adjustedLayer))")
+                            .font(.system(size: 16, weight: .semibold))
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(isResuming ? Color.gray : Color.orange)
+                    .cornerRadius(12)
+                }
+                .disabled(isResuming)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 30)
+            }
+            .background(background)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundColor(accent)
+                }
+            }
+            .alert("Start Resume Print?", isPresented: $showConfirm) {
+                Button("Cancel", role: .cancel) {}
+                Button("Resume & Start Print", role: .destructive) {
+                    executeResume(autoStart: true)
+                }
+                Button("Generate File Only") {
+                    executeResume(autoStart: false)
+                }
+            } message: {
+                Text("This will generate a resume gcode starting from layer \(Int(adjustedLayer)) and upload it to the printer.")
+            }
+        }
+    }
+
+    private func infoRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 13))
+                .foregroundColor(dimText)
+            Spacer()
+            Text(value)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(bodyText)
+        }
+    }
+
+    private func executeResume(autoStart: Bool) {
+        isResuming = true
+        resultMessage = nil
+
+        guard let url = URL(string: "\(serverBaseURL)/printer-resume-from-layer") else {
+            resultMessage = "Error: Invalid server URL"
+            isResuming = false
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let token = ws.authToken
+        if !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "filename": resume.filename,
+            "layer": Int(adjustedLayer),
+            "start": autoStart,
+        ] as [String: Any])
+        request.timeoutInterval = 600  // 10 minutes for large files
+
+        Task {
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                let httpResp = response as? HTTPURLResponse
+                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let ok = json?["ok"] as? Bool ?? false
+
+                await MainActor.run {
+                    isResuming = false
+                    if ok {
+                        let resumeFile = json?["resume_file"] as? String ?? "unknown"
+                        if autoStart {
+                            resultMessage = "Print started: \(resumeFile)"
+                        } else {
+                            resultMessage = "File uploaded: \(resumeFile). Start it from Mainsail."
+                        }
+                    } else {
+                        let error = json?["error"] as? String ?? "HTTP \(httpResp?.statusCode ?? 0)"
+                        resultMessage = "Error: \(error)"
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isResuming = false
+                    resultMessage = "Error: \(error.localizedDescription)"
+                }
+            }
+        }
     }
 }

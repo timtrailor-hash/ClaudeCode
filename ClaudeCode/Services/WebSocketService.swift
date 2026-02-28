@@ -1,6 +1,15 @@
 import Foundation
 import Combine
 
+/// A printer alert received via WebSocket, stored for display in System tab
+struct PrinterAlert: Identifiable {
+    let id = UUID()
+    let timestamp: Date
+    let printer: String    // "sv08", "a1", "system"
+    let event: String      // "state_change", "firmware_error", etc.
+    let message: String
+}
+
 /// Represents a pending permission request from Claude
 struct PermissionRequest: Identifiable {
     let id: String          // request_id from server
@@ -49,6 +58,10 @@ class WebSocketService: ObservableObject {
     var pendingPermission: PermissionRequest? { permissionQueue.first }
     @Published var permissionLevel: PermissionLevel = .terminalOnly
     @Published var reconnectCount: Int = 0
+    @Published var printerAlerts: [PrinterAlert] = []
+
+    /// Maximum number of alerts to keep in memory
+    private let maxAlerts = 50
 
     /// Highest event offset seen — used to skip replayed events on reconnect
     private var lastSeenOffset: Int = -1
@@ -483,6 +496,18 @@ class WebSocketService: ObservableObject {
             let alertMsg = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["message"] as? String ?? printer
             let alertEvent = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["event"] as? String ?? ""
             let printerName = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["printer"] as? String ?? ""
+
+            // Store alert for display in System tab
+            let alert = PrinterAlert(
+                timestamp: Date(),
+                printer: printerName,
+                event: alertEvent,
+                message: alertMsg
+            )
+            printerAlerts.insert(alert, at: 0)
+            if printerAlerts.count > maxAlerts {
+                printerAlerts = Array(printerAlerts.prefix(maxAlerts))
+            }
 
             // Post notification based on user preferences
             let prefs = NotificationPreferences.shared

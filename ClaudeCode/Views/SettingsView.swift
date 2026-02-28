@@ -176,7 +176,7 @@ struct SettingsView: View {
                     .disabled(authInProgress)
                 }
 
-                SystemHealthSection(serverHost: ws.serverHost)
+                SystemHealthSection(serverHost: ws.serverHost, printerAlerts: ws.printerAlerts)
 
                 Section("About") {
                     HStack {
