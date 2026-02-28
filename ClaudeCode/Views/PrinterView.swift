@@ -949,7 +949,7 @@ struct PrinterView: View {
 
         Task {
             _ = try? await URLSession.shared.data(for: request)
-            await MainActor.run { refreshPrinterData() }
+            await MainActor.run { Task { await fetchPrinterStatus() } }
         }
     }
 
@@ -973,7 +973,7 @@ struct PrinterView: View {
             _ = try? await URLSession.shared.data(for: request)
             await MainActor.run {
                 isSettingSpeed = false
-                refreshPrinterData()
+                Task { await fetchPrinterStatus() }
             }
         }
     }
