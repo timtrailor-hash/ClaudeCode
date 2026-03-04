@@ -13,7 +13,11 @@ struct SettingsView: View {
     @State private var tokenInput = ""
     @AppStorage("appZoomLevel") private var zoomLevel: Double = 1.0
 
-    // Terminal auth state
+    // SSH terminal credentials
+    @AppStorage("sshUsername") private var sshUsername = "timtrailor"
+    @AppStorage("sshPassword") private var sshPassword = ""
+
+    // Terminal auth state (legacy — for WKWebView terminal OAuth)
     @State private var authSheetItem: IdentifiableURL?
     @State private var authInProgress = false
     @State private var authStatusMessage: String?
@@ -145,8 +149,31 @@ struct SettingsView: View {
                     }
                 }
 
-                Section(header: Text("Terminal Authentication"),
-                        footer: Text("Authenticate the Terminal tab with your Claude account via OAuth.")) {
+                Section(header: Text("SSH Terminal"),
+                        footer: Text("Credentials for the native SSH terminal connection to your Mac Mini.")) {
+                    HStack {
+                        Text("Username")
+                        Spacer()
+                        TextField("username", text: $sshUsername)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundColor(accent)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    }
+
+                    HStack {
+                        Text("Password")
+                        Spacer()
+                        SecureField("SSH password", text: $sshPassword)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundColor(accent)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    }
+                }
+
+                Section(header: Text("Terminal Authentication (Legacy)"),
+                        footer: Text("OAuth authentication for the legacy WKWebView terminal. Not needed with SSH terminal.")) {
                     if let msg = authStatusMessage {
                         HStack {
                             Image(systemName: authStatusIsError ? "xmark.circle" : "checkmark.circle")

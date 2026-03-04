@@ -72,8 +72,8 @@ struct ContentView: View {
                 }
                 .tag(3)
 
-            // Terminal is NOT zoomed — xterm.js handles its own scrolling
-            TerminalView()
+            // Terminal is NOT zoomed — SwiftTerm handles its own scrolling
+            NativeTerminalView()
                 .tabItem {
                     Image(systemName: "terminal.fill")
                     Text("Terminal")
