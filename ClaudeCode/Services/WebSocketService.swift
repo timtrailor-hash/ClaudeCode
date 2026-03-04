@@ -182,7 +182,8 @@ class WebSocketService: ObservableObject {
             return
         }
 
-        let displayText = imagePaths.isEmpty ? text : "\(text)\n[\(imagePaths.count) image(s) attached]"
+        let fileWord = imagePaths.count == 1 ? "file" : "files"
+        let displayText = imagePaths.isEmpty ? text : "\(text)\n[\(imagePaths.count) \(fileWord) attached]"
         let userMsg = ChatMessage(role: .user, content: displayText)
         messages.append(userMsg)
 

@@ -18,7 +18,16 @@ struct ChatView: View {
         let id = UUID()
         let thumbnail: UIImage
         let data: Data
+        let filename: String
+        let isFile: Bool  // true for non-image files (PDFs, text, etc.)
         var serverPath: String?
+
+        init(thumbnail: UIImage, data: Data, filename: String = "image.jpg", isFile: Bool = false) {
+            self.thumbnail = thumbnail
+            self.data = data
+            self.filename = filename
+            self.isFile = isFile
+        }
     }
 
     var body: some View {
@@ -146,8 +155,8 @@ struct ChatView: View {
                 .ignoresSafeArea()
             }
             .sheet(isPresented: $showFilePicker) {
-                FileImagePicker { data in
-                    addFileData(data)
+                FileImagePicker { data, filename in
+                    addFileData(data, filename: filename)
                 }
             }
         }
@@ -272,18 +281,35 @@ struct ChatView: View {
                 .padding(.vertical, 4)
             }
 
-            // Pending image thumbnails
+            // Pending attachment thumbnails
             if !pendingImages.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
                         ForEach(pendingImages) { img in
                             ZStack(alignment: .topTrailing) {
-                                Image(uiImage: img.thumbnail)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
+                                if img.isFile {
+                                    // File attachment — show icon and filename
+                                    VStack(spacing: 2) {
+                                        Image(systemName: fileIcon(for: img.filename))
+                                            .font(.system(size: 24))
+                                            .foregroundColor(Color(hex: "#C9A96E"))
+                                        Text(img.filename)
+                                            .font(.system(size: 8))
+                                            .foregroundColor(Color(hex: "#E0E0E0"))
+                                            .lineLimit(2)
+                                            .multilineTextAlignment(.center)
+                                    }
                                     .frame(width: 60, height: 60)
+                                    .background(Color(hex: "#2A2A4A"))
                                     .cornerRadius(8)
-                                    .clipped()
+                                } else {
+                                    Image(uiImage: img.thumbnail)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: 60, height: 60)
+                                        .cornerRadius(8)
+                                        .clipped()
+                                }
 
                                 Button {
                                     pendingImages.removeAll { $0.id == img.id }
@@ -305,12 +331,18 @@ struct ChatView: View {
 
             // Input area
             HStack(alignment: .bottom, spacing: 6) {
-                // Attach button — camera, photo library, or file
+                // Attach button — camera, photo library, screenshot, or file
                 Menu {
                     Button {
                         showCamera = true
                     } label: {
                         Label("Take Photo", systemImage: "camera")
+                    }
+
+                    Button {
+                        captureScreenshot()
+                    } label: {
+                        Label("Screenshot", systemImage: "camera.viewfinder")
                     }
 
                     Button {
@@ -322,7 +354,7 @@ struct ChatView: View {
                     Button {
                         showFilePicker = true
                     } label: {
-                        Label("Choose File", systemImage: "doc")
+                        Label("Choose File", systemImage: "doc.badge.plus")
                     }
                 } label: {
                     Image(systemName: "paperclip")
@@ -414,11 +446,43 @@ struct ChatView: View {
         pendingImages.append(PendingImage(thumbnail: thumb, data: jpegData))
     }
 
-    private func addFileData(_ data: Data) {
+    private func addFileData(_ data: Data, filename: String) {
+        // Try to treat as image first
         if let image = UIImage(data: data) {
             let thumb = image.preparingThumbnail(of: CGSize(width: 120, height: 120)) ?? image
             let jpegData = image.jpegData(compressionQuality: 0.8) ?? data
-            pendingImages.append(PendingImage(thumbnail: thumb, data: jpegData))
+            pendingImages.append(PendingImage(thumbnail: thumb, data: jpegData, filename: filename))
+        } else {
+            // Non-image file — use placeholder thumbnail
+            let placeholder = UIImage(systemName: "doc.fill") ?? UIImage()
+            pendingImages.append(PendingImage(thumbnail: placeholder, data: data, filename: filename, isFile: true))
+        }
+    }
+
+    private func captureScreenshot() {
+        guard let window = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first?.windows.first else { return }
+
+        let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
+        let image = renderer.image { ctx in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        let thumb = image.preparingThumbnail(of: CGSize(width: 120, height: 120)) ?? image
+        let jpegData = image.jpegData(compressionQuality: 0.8) ?? Data()
+        pendingImages.append(PendingImage(thumbnail: thumb, data: jpegData, filename: "screenshot.jpg"))
+    }
+
+    private func fileIcon(for filename: String) -> String {
+        let ext = (filename as NSString).pathExtension.lowercased()
+        switch ext {
+        case "pdf": return "doc.richtext"
+        case "txt", "md", "log": return "doc.text"
+        case "csv", "xlsx", "xls": return "tablecells"
+        case "json", "xml", "yaml", "yml": return "curlybraces"
+        case "py", "swift", "js", "ts", "html", "css": return "chevron.left.forwardslash.chevron.right"
+        case "zip", "tar", "gz": return "doc.zipper"
+        default: return "doc.fill"
         }
     }
 
@@ -435,10 +499,12 @@ struct ChatView: View {
             let boundary = UUID().uuidString
             request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
+            let mimeType = img.isFile ? mimeTypeFor(filename: img.filename) : "image/jpeg"
+
             var body = Data()
             body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"file\"; filename=\"image.jpg\"\r\n".data(using: .utf8)!)
-            body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(img.filename)\"\r\n".data(using: .utf8)!)
+            body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
             body.append(img.data)
             body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
             request.httpBody = body
@@ -450,6 +516,23 @@ struct ChatView: View {
             }
         }
         return paths
+    }
+
+    private func mimeTypeFor(filename: String) -> String {
+        let ext = (filename as NSString).pathExtension.lowercased()
+        switch ext {
+        case "jpg", "jpeg": return "image/jpeg"
+        case "png": return "image/png"
+        case "gif": return "image/gif"
+        case "pdf": return "application/pdf"
+        case "txt", "md", "log": return "text/plain"
+        case "csv": return "text/csv"
+        case "json": return "application/json"
+        case "xml": return "application/xml"
+        case "zip": return "application/zip"
+        case "py", "swift", "js", "ts", "html", "css": return "text/plain"
+        default: return "application/octet-stream"
+        }
     }
 }
 
@@ -486,15 +569,18 @@ struct CameraPicker: UIViewControllerRepresentable {
     }
 }
 
-// MARK: - File Picker (images from Files app)
+// MARK: - File Picker (any file from Files app)
 
 struct FileImagePicker: UIViewControllerRepresentable {
-    let onPick: (Data) -> Void
+    let onPick: (Data, String) -> Void
     @Environment(\.dismiss) private var dismiss
 
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.image])
-        picker.allowsMultipleSelection = false
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [
+            .image, .pdf, .plainText, .json, .xml, .commaSeparatedText,
+            .data, .sourceCode, .spreadsheet, .presentation
+        ])
+        picker.allowsMultipleSelection = true
         picker.delegate = context.coordinator
         return picker
     }
@@ -508,11 +594,12 @@ struct FileImagePicker: UIViewControllerRepresentable {
         init(parent: FileImagePicker) { self.parent = parent }
 
         func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-            guard let url = urls.first else { return }
-            guard url.startAccessingSecurityScopedResource() else { return }
-            defer { url.stopAccessingSecurityScopedResource() }
-            if let data = try? Data(contentsOf: url) {
-                parent.onPick(data)
+            for url in urls {
+                guard url.startAccessingSecurityScopedResource() else { continue }
+                defer { url.stopAccessingSecurityScopedResource() }
+                if let data = try? Data(contentsOf: url) {
+                    parent.onPick(data, url.lastPathComponent)
+                }
             }
         }
     }
