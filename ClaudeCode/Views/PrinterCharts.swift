@@ -30,11 +30,26 @@ struct SpeedProfileChart: View {
     private let accent = Color(hex: "#C9A96E")
     private let chartBg = Color(hex: "#0D1520")
 
+    private var yDomain: ClosedRange<Int> {
+        let values = data.map { min($0.optimal_pct, 500) }
+        let maxVal = values.max() ?? 200
+        let minVal = values.min() ?? 0
+        let lo = max(0, minVal - 20)
+        let hi = maxVal + 20
+        return lo...hi
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Speed Profile")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(Color(hex: "#AAAAAA"))
+            HStack {
+                Text("Speed Profile")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Color(hex: "#AAAAAA"))
+                Spacer()
+                Text("Speed %")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Color(hex: "#666666"))
+            }
 
             Chart {
                 ForEach(data.filter { $0.status == "past" }) { entry in
@@ -72,28 +87,36 @@ struct SpeedProfileChart: View {
                     .foregroundStyle(.white.opacity(0.2))
                     .lineStyle(StrokeStyle(lineWidth: 0.5, dash: [4, 4]))
             }
-            .chartXAxisLabel("Layer", alignment: .center)
-            .chartYAxisLabel("Speed %")
+            .chartYScale(domain: yDomain)
             .chartXAxis {
                 AxisMarks(values: .automatic(desiredCount: 5)) {
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
                         .foregroundStyle(.white.opacity(0.1))
                     AxisValueLabel()
-                        .font(.system(size: 11))
+                        .font(.system(size: 10))
                         .foregroundStyle(Color(hex: "#888888"))
                 }
             }
             .chartYAxis {
-                AxisMarks(values: .automatic(desiredCount: 4)) {
+                AxisMarks(values: .automatic(desiredCount: 4)) { value in
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
                         .foregroundStyle(.white.opacity(0.1))
-                    AxisValueLabel()
-                        .font(.system(size: 11))
+                    if let pct = value.as(Int.self) {
+                        AxisValueLabel {
+                            Text("\(pct)%")
+                                .font(.system(size: 10))
+                        }
                         .foregroundStyle(Color(hex: "#888888"))
+                    }
                 }
             }
-            .frame(height: 180)
-            .padding(8)
+            .chartPlotStyle { plot in
+                plot.padding(.leading, 4)
+            }
+            .frame(height: 210)
+            .padding(.top, 4)
+            .padding(.horizontal, 8)
+            .padding(.bottom, 8)
             .background(chartBg)
             .cornerRadius(10)
 
@@ -165,14 +188,17 @@ struct EtaHistoryChart: View {
                 .symbolSize(8)
             }
             .chartYScale(domain: yDomain)
-            .chartXAxisLabel("Elapsed (h)", alignment: .center)
             .chartXAxis {
-                AxisMarks(values: .automatic(desiredCount: 5)) {
+                AxisMarks(values: .automatic(desiredCount: 5)) { value in
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
                         .foregroundStyle(.white.opacity(0.1))
-                    AxisValueLabel()
-                        .font(.system(size: 11))
+                    if let h = value.as(Double.self) {
+                        AxisValueLabel {
+                            Text(String(format: "%.0fh", h))
+                                .font(.system(size: 10))
+                        }
                         .foregroundStyle(Color(hex: "#888888"))
+                    }
                 }
             }
             .chartYAxis {
@@ -182,14 +208,19 @@ struct EtaHistoryChart: View {
                     if let ts = value.as(Double.self) {
                         AxisValueLabel {
                             Text(formatAxisDate(Date(timeIntervalSince1970: ts)))
-                                .font(.system(size: 11))
+                                .font(.system(size: 10))
                         }
                         .foregroundStyle(Color(hex: "#888888"))
                     }
                 }
             }
-            .frame(height: 190)
-            .padding(8)
+            .chartPlotStyle { plot in
+                plot.padding(.leading, 4)
+            }
+            .frame(height: 210)
+            .padding(.top, 4)
+            .padding(.horizontal, 8)
+            .padding(.bottom, 8)
             .background(chartBg)
             .cornerRadius(10)
 
@@ -233,11 +264,23 @@ struct ComplexityChart: View {
     private let accent = Color(hex: "#C9A96E")
     private let chartBg = Color(hex: "#0D1520")
 
+    private var yMax: Double {
+        let maxAlpha = data.map { min($0.alpha, 2.0) }.max() ?? 1.0
+        // Round up to next 0.5 step for clean ticks
+        return max(0.5, (maxAlpha * 2.0).rounded(.up) / 2.0)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Layer Complexity")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(Color(hex: "#AAAAAA"))
+            HStack {
+                Text("Layer Complexity")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Color(hex: "#AAAAAA"))
+                Spacer()
+                Text("\u{03B1}")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Color(hex: "#666666"))
+            }
 
             Chart {
                 ForEach(data) { entry in
@@ -252,6 +295,7 @@ struct ComplexityChart: View {
                             endPoint: .bottom
                         )
                     )
+                    .interpolationMethod(.catmullRom)
                 }
 
                 ForEach(data.filter { $0.status == "past" }) { entry in
@@ -261,6 +305,7 @@ struct ComplexityChart: View {
                     )
                     .foregroundStyle(.red)
                     .lineStyle(StrokeStyle(lineWidth: 1.5))
+                    .interpolationMethod(.catmullRom)
                 }
 
                 ForEach(data.filter { $0.status == "future" }) { entry in
@@ -270,6 +315,7 @@ struct ComplexityChart: View {
                     )
                     .foregroundStyle(.red.opacity(0.4))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                    .interpolationMethod(.catmullRom)
                 }
 
                 if let current = data.first(where: { $0.status == "current" }) {
@@ -285,28 +331,36 @@ struct ComplexityChart: View {
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                 }
             }
-            .chartXAxisLabel("Layer", alignment: .center)
-            .chartYAxisLabel("\u{03B1}")
+            .chartYScale(domain: 0...yMax)
             .chartXAxis {
                 AxisMarks(values: .automatic(desiredCount: 5)) {
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
                         .foregroundStyle(.white.opacity(0.1))
                     AxisValueLabel()
-                        .font(.system(size: 11))
+                        .font(.system(size: 10))
                         .foregroundStyle(Color(hex: "#888888"))
                 }
             }
             .chartYAxis {
-                AxisMarks(values: .automatic(desiredCount: 4)) {
+                AxisMarks(values: .automatic(desiredCount: 4)) { value in
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.3))
                         .foregroundStyle(.white.opacity(0.1))
-                    AxisValueLabel()
-                        .font(.system(size: 11))
+                    if let v = value.as(Double.self) {
+                        AxisValueLabel {
+                            Text(String(format: "%.1f", v))
+                                .font(.system(size: 10))
+                        }
                         .foregroundStyle(Color(hex: "#888888"))
+                    }
                 }
             }
-            .frame(height: 180)
-            .padding(8)
+            .chartPlotStyle { plot in
+                plot.padding(.leading, 4)
+            }
+            .frame(height: 210)
+            .padding(.top, 4)
+            .padding(.horizontal, 8)
+            .padding(.bottom, 8)
             .background(chartBg)
             .cornerRadius(10)
 
